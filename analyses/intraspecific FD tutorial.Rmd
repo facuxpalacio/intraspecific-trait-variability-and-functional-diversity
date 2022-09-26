@@ -1,0 +1,709 @@
+---
+title: "ITV methods"
+subtitle: "Supplementary material"
+author: 'Code author: Facundo X. Palacio'
+date: "`r Sys.Date()`"
+output: 
+  tufte::tufte_html:
+    toc: true
+---
+
+\ 
+
+```{r setup, include = FALSE}
+# Suppress messages, warnings and errors for document aesthetics.
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, error = FALSE, echo = TRUE)
+```
+
+```{r packages, results = 'hide'}
+# Load packages
+library(MASS) # Simulating multivariate normal and Wishart distributions
+library(ggplot2) # Plotting
+library(ggpubr) # Plotting
+library(dplyr) # Data handling
+library(tidyr) # Data handling
+library(knitr) # Improved layout
+library(mobsim) # Community matrices simulation
+library(lme4) # Linear mixed models
+library(boot) # Bootstrap confidence intervals
+library(cati) # T-statistics, Rao's entropy decomposition and ITV simulations
+library(factoextra) # Plot nice dendrograms
+library(geometry) # for TOP index (convex hulls)
+library(geozoo) # for TED index (spehere random points)
+library(flexmix) # for TED index (KL divergence)
+library(TPD) # Trait-probability density
+library(alphahull) # Convex hulls
+library(BAT) # Hypervolumes
+```
+
+\
+
+Set simulation parameters
+```{r params}
+set.seed(999)
+
+# Number of communities
+ncomms <- 15
+
+# Species richness
+nsp <- 20
+
+# Number of traits
+ntraits <- 3
+
+# Number of individuals sampled per species
+nindxsp <- 10
+```
+
+\
+
+# Trait matrix at the individual level
+```{r traits}
+trait_matrix <- list()
+
+for(i in 1:ncomms){
+mean_traits <- rnorm(ntraits, mean = 10, sd = 6) # Assume a normal distribution (fixed for every species in the same community)
+sigma_traits <- rWishart(1, df = ntraits, Sigma = diag(ntraits)) # Assume a standard Wishart distribution (fixed for every species in the same community)
+
+# Trait matrix per community
+trait_ind <- list() 
+
+for(j in 1:nsp){
+trait_ind[[j]] <- mvrnorm(n = nindxsp, mu = mean_traits, Sigma = sigma_traits[,,1], tol = 1e-6, empirical = FALSE, EISPACK = FALSE)
+}
+sp_label <- sort(rep(1:nsp, nindxsp))
+
+trait_matrix[[i]] <- as.data.frame(do.call("rbind", trait_ind))
+trait_matrix[[i]] <- data.frame(species = sp_label, trait_matrix[[i]])
+}
+names(trait_matrix) <- 1:ncomms
+```
+
+\ 
+
+# Community matrix
+```{r comm matrix}
+nind <- 200 # Number of individuals per community
+C <- matrix(0, nrow = ncomms, ncol = nsp)
+for(i in 1:ncomms){
+  C[i, ] <- as.numeric(sim_sad(s_pool = nsp, n_sim = nind, 
+                              sad_type = "lnorm", sad_coef = list("meanlog" = 5, "sdlog" = 0.5), 
+                              fix_s_sim = TRUE))
+}  
+
+colnames(C) <- 1:nsp
+rownames(C) <- 1:ncomms
+```
+
+\
+
+# Single trait data visualization {#trait_plot}
+As an example, we will base the analysis on community number 5. First, we can explore individual trait distributions and correlations.
+```{r trait plots}
+T5 <- trait_matrix[[5]]
+ggplot(T5, aes(x = V1, fill = as.factor(species))) + geom_density(alpha = 0.4)
+
+ggplot(T5, aes(x = as.factor(species), y = V1)) + geom_boxplot()
+
+ggplot(T5, aes(x = V1, y = V2, color = as.factor(species))) + 
+  geom_point(size = 3)
+```
+
+\
+
+# One species, a single trait: the coefficient of variation
+`uni_cv` computes the coefficient of variation and the Bao's coefficient of variation for a single (continuous) trait and a set of species.
+```{r cv}
+uni_cv <- function(trait, species){
+  species <- as.factor(species)
+  sp <- table(species)
+  Nsp <- length(sp)
+  df <- data.frame(species, trait)
+  summary_cv <- as.data.frame(matrix(NA, nrow = Nsp, ncol = 7))
+  sp.names <- unique(df$species)
+  
+  for(i in 1:Nsp){
+    subdata <- subset(df, species == sp.names[i])
+    N <- length(subdata$trait)
+    meanT <- mean(subdata$trait, na.rm = TRUE)
+    S <- sd(subdata$trait, na.rm = TRUE)
+    cv <- S/meanT
+    skew <- sum(((subdata$trait - meanT)/S)^3)/N
+    kurt <- sum(((subdata$trait - meanT)/S)^4)/N
+    BaoCV <- cv - cv^3/N + cv/(4*N) + cv^2*skew/(2*N) + 
+                 cv*kurt/(8*N)
+    summary_cv[i, ] <- c(N, meanT, S, cv, skew, kurt, BaoCV)
+  }
+  
+  summary_cv <- data.frame(sp.names, summary_cv)
+  colnames(summary_cv) <- c("Species", "Sample size", "Mean",
+                            "Standard deviation", "CV", "Skewness", 
+                            "Kurtosis", "Bao's CV")
+    summary_cv
+}
+ 
+trait <- trait_matrix[[5]]$V1  
+species <- as.factor(trait_matrix[[5]]$sp)
+kable(uni_cv(trait = trait, species = species), digits = 2)
+```
+From trait distributions, it seems that species do not strongly vary between them, but there is high variability within the same species.
+
+\
+
+# One species, multiple traits: the multivariate coefficient of variation
+`multi_cv` computes the multiple coefficient of variation for a set of traits and species.
+```{r mcv}
+multi_cv <- function(traits, species){
+  species <- as.factor(species)
+  p <- ncol(traits)
+  mu <- colMeans(traits, na.rm = TRUE)
+  sigma <- as.matrix(var(traits, na.rm = TRUE))
+  trace <- sum(diag(sigma))
+  R <- sqrt((det(sigma)^(1/p))/(t(mu) %*% mu)) # Reyment's CV
+  VV <- sqrt(trace/(t(mu) %*% mu)) # Van Valen's CV
+  VN <- sqrt(1/(t(mu) %*% solve(sigma) %*% mu)) # Voinoi and Nikulin's CV
+  AZ <- sqrt((t(mu) %*% sigma %*% mu)/((t(mu) %*% mu)^2)) # Albert and Zhang's CV
+  cvs <- data.frame(R, VV, VN, AZ)
+  colnames(cvs) <- c("Reyment", "Van Valen", "Voinoi and Nikulin", "Albert and Zhang")
+  cvs
+}
+species <- as.factor(trait_matrix[[5]]$sp)
+traits <- trait_matrix[[5]][,-1]
+
+kable(multi_cv(species = species, traits = traits), digits = 2)
+```
+
+Note how variability considering multiple correlated traits strongly reduced compared to single trait variability.
+
+\
+
+# Multiple species, a single trait: community-weighted variance and variance partitioning
+
+\
+
+## Community weighted intraspecific trait variance
+`CWmetrics` computes the community-weighted mean (CWM), variance (CWV) and intraspecific variance (CWIV) for a set of communities and traits. The function needs a community data frame (argument `comm`) and a list of individuals x trait data frames (argument `traits`). The first column of each data frame must contain the species label (argument `species`). If intraspecific variability is 0, then CWIV = CWV. This happens when one is working under the mean field approach (the trait matrix is composed of mean trait values). The outuput is a data frame with CWM, CWV and CWIV for each community and trait.
+```{r CWV}
+CWmetrics <- function(comm, traits, species, S = 0){
+# Trait matrix at the species level (mean field approach)
+df_traits <- do.call("rbind", traits)
+df_traits$species <- as.factor(df_traits$species)
+meanT <- df_traits %>% group_by(species) %>% 
+  summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE))) %>% 
+  as.data.frame()
+sdT <- df_traits %>% group_by(species) %>% 
+  summarise(across(where(is.numeric), ~ sd(.x, na.rm = TRUE))) %>% 
+  as.data.frame()
+t <- as.matrix(meanT[, -1]) # trait means
+S <- as.matrix(sdT[, -1]) # trait standard deviations
+
+# Community-weighted metrics
+R <- as.matrix(comm/rowSums(comm))  # Species relative abundances
+# Community-weighted mean
+CWM <- R %*% t
+colnames(CWM) <- paste0("CWM", 1:ncol(t))
+# Community-weighted variance 
+CWV <- (R %*% t^2) - CWM^2
+colnames(CWV) <- paste0("CWV", 1:ncol(t))
+# Community-weighted intraspecific variance
+CWIV <- (R %*% (t^2 + S^2)) - CWM^2
+colnames(CWIV) <- paste0("CWIV", 1:ncol(t))
+
+CW <- data.frame(CWM, CWV, CWIV)
+CW
+}
+
+kable(CWmetrics(comm = C, traits = trait_matrix, species = sp), digits = 2)
+```
+
+For this particular case, this reveals that not accounting for ITV largely underestimates functional diversity. This is because intraspecific variability is much more higher than interspecific variance.
+
+\
+
+## Linear mixed models
+Linear mixed models allow to disentangle the sources of variation between and within-levels of a factor (species), so that we can estimate the contribution of interspecific and intraspecific trait variability. In addition, we can compute confidence intervals for each component based on bootstrap replicates.
+
+```{r lmms}
+dataV1 <- data.frame(species = as.factor(species), trait)
+var_comps_V1 <- lmer(trait ~ 1|species, REML = TRUE, data = dataV1)
+vc <- VarCorr(var_comps_V1)
+varcomps1 <- c(unlist(lapply(vc, diag)), attr(vc, "sc")^2)
+varcomps1 <- as.data.frame(t(100*(varcomps1/sum(varcomps1))))
+colnames(varcomps1) <- c("Between-species variation (%)", "Within-species variation (%)")
+kable(varcomps1, digits = 2)
+
+var.comp <- function(df, d){
+  newdf <- df[d, ]
+  model <- lmer(trait ~ 1|species, REML = TRUE, data = newdf)
+  vcorr <- VarCorr(model)
+  vc <- c(unlist(lapply(vcorr,diag)), attr(vcorr,"sc")^2)
+  percn <- round(100*(vc/sum(vc)),3)
+  percn
+}
+
+b <- boot(dataV1, var.comp, R = 1000)
+b
+boot.ci(b, conf = 0.95, type = "bca", index = 1)
+boot.ci(b, conf = 0.95, type = "bca", index = 2)
+```
+
+As we saw above, there is substantially more trait variation within than between species for this particular community. We can certainly expand this model to account for variation between and within different communities (or any other organizational level) by including additional random effects.
+
+\
+
+## T-statistics
+Based on competition theory, T-statistics dissect the effects of assembly processes by using trait values of individuals. As a result, T-statistics estimate the magnitude of external and environmental filtering based on ITV, through a set of variance ratios ($T_{IP/IC}$, $T_{IC/IR}$ and $T_{PC/PR}$). For each trait V1, V2 and V3 We can also test for the departure of observed trait distributions from null expectations of each of these ratios.
+
+```{r Tstats}
+# Trait matrix of individuals
+traits <- do.call(rbind, trait_matrix)[,-1]
+# Define the name of the species each individual belongs to
+species <- as.factor(do.call(rbind, trait_matrix)$sp)
+# Define the name of the community each individual belongs to
+ind.plot_list <- Map(cbind, trait_matrix, community = names(trait_matrix))
+ind.plot <- as.factor(do.call(rbind, ind.plot_list)$community)
+
+T_stats <- Tstats(traits = traits, ind.plot = ind.plot, sp = species, nperm = 500)
+plot(T_stats)
+```
+
+The crossed circle and line represent the observed standardized effect size (SES) and the standard deviation, respectively, for a trait and set of communities. Filled circles represent the observed SES for each community, and boxes depict the null distribution. If the line does not overlap with the box, then the null hypothesis is rejected, i.e., there is significant internal or external filtering. $T_{IP/IC}$ measures the strength of internal filtering (niche packing among species); the higher the overlap of ITV, the higher the value $T_{IP/IC}$. For the three traits, two individuals belonging to the same population, do not show more similar trait values than two individuals drawn randomly from the same community. This is evidence for no internal filtering. $T_{IC/IR}$ measures the degree of external filtering when accounting for ITV; the higher the overlap of community trait distributions, the higher the value of $T_{IC/IR}$. $T_{PC/PR}$ measures the degree of external filtering not accounting for ITV (at the species level). Here, $T_{IC/IR}$ and $T_{PC/PR}$ are lower than expected by chance, suggesting that two individuals of the same community have significantly more similar trait values than two individuals randomly drawn from the species pool. This can be interpreted as external filtering for these traits, potentially due to environmental constraints.
+
+\
+
+## Methods to account for intraspecific trait variability in functional diversity
+
+\
+
+### Dendrogram-based functional diversity
+Some classical approaches in functional diversity, such as the functional dendrogram, have been adapted to account for ITV by building a dendrogram on an individual by trait matrix.
+
+```{r dendro1}
+dist_T <- dist(traits) # Euclidean distance, but modify accordingly
+func_dendro <- hclust(dist_T, method = "average") # UPGMA
+fviz_dend(func_dendro, cex = 0.5, horiz = TRUE)
+```
+
+Functional diversity is computed as the sum of the branch lengths connecting those individuals present in the same community. One of the main caveats of the functional dendrogram is that it ignores species abundances when working at the species level, so that two communities with the same species have exactly the same functional diversity value. However, since here the lowest level is represented by individuals, it does not represents a problem for functional diversity estimation, although it only reflects one metric of diversity (functional richness). Functional dendrograms also map categorical traits poorly (not this case). 
+
+```{r dendro2}
+dendroFD <- c()
+for(i in 1:ncomms){
+Tk <- trait_matrix[[i]][, -1] # Remove first column with species labels
+dendroFD[i] <- SumBL(Tk, gower.dist = FALSE, method.hclust = "average", scale.tr = TRUE, method.dist = "euclidian")
+}
+
+ggplot(data = data.frame(FD = dendroFD), aes(x = FD)) +
+  geom_histogram(aes(y = ..density..), bins = 8, colour = "black", fill = "white") +
+  geom_density(alpha = 0.2, fill = "#FF6666")
+
+```
+
+\
+
+### Variance partitioning and functional diversity
+Bello et al. (2011) proposed a method to partition FD into within- and between-species FD. Unlike the methods above, now we can identify the relative contribution of interspecific and intraspecific trait variability to functional diversity. 
+
+```{r RaoITV}
+itvFD <- as.data.frame(matrix(0, nrow = ncomms, ncol = 3))
+for(k in 1:ncomms){
+# First, we create a functional distance matrix at the individual level for each community
+Tk <- trait_matrix[[k]][, -1] # Remove first column with species labels
+Ck <- C[k, ]
+dk <- (as.matrix(dist(Tk))^2)/2
+
+# Second, we create an individual x species matrix for each community
+comm <- NULL
+for(i in 1:nsp){
+ comm[[i]] <- rep(Ck[i], nindxsp)
+}
+longC <- data.frame(sp = sort(rep(1:nsp, nindxsp)), abun = unlist(comm))
+
+comm <- matrix(0, nrow = nindxsp*nsp, ncol = nsp)
+for(j in 1:nsp){
+for(i in 1:nrow(longC)){
+ comm[i, j] <- ifelse(longC$sp[i] == j, longC$abun[i], 0)
+ }
+}
+class(comm) <- "matrix"
+
+# We now can compute FD accounting for ITV
+ITVRao <- RaoRel(sample = comm, dfunc = dk, dphyl = NULL, weight = TRUE, Jost = FALSE, structure = NULL)
+
+# Within species variance
+witRao <- ITVRao$FD$Mean_Alpha
+
+# Between species variance
+betRao <- ITVRao$FD$Beta_add 
+
+# Total variance
+totRao <- witRao + betRao
+
+itvFD[k, ] <- c(witRao, betRao, totRao)
+}
+colnames(itvFD) <- c("Intraspecific variability", "Interspecific variability", "Total variability")
+
+# Barplot
+itvFD_long <- gather(data = itvFD[,- 3], key = variance_source, value = variance)
+itvFD_long$community <- factor(rep(1:ncomms, 2))
+ggplot(data = itvFD_long, aes(x = community, y = variance, fill = variance_source)) +
+  geom_bar(stat = "identity") + theme_minimal()
+```
+
+In agreement with previous approaches, we see that for each community, intraspecific variability contributes much more to functional diversity than interspecific differences. The great benefit of this approach relative to those above, is that we now can assess the contribution of species turnover (and its covariation with ITV) that may be influencing trait variability. In this particular case, however, it does not make too much sense to dissect turnover from ITV, because we have simulated communities with the same species richness and similar abundances per species across communities. We can perform the analysis for illustrative purposes though. 
+
+```{r turnover}
+var_decomp <- decompCTRE(traits = traits, sp = species, ind.plot = ind.plot, print = FALSE)
+var_decomp
+barplot(var_decomp)
+```
+\
+
+### Trait onion peeling and trait even distribution
+Fontana et al. (2015) developed two indices to account for individual-level trait richness (TOP = Trait onion peeling) and regularity (TED = trait evenness distribution). TOP computes the sum of all successive convex hull areas touching all individuals within a multidimensional trait space. TED is calculated by comparing the probability distributions of pairwise distances between individuals and between points of a perfectly even distribution. 
+
+```{r TOP_TED}
+#### Function to compute TOP index (from Fontana et al. 2015)
+TOP.index <- function(traitdat){
+  # TOP
+  dim1 <- ncol(traitdat)
+  #definitions: index i, area as empty vector
+  i=0
+  area<-matrix(ncol=2,nrow=nrow(traitdat))
+  while(nrow(traitdat)>dim1){
+    i=i+1
+    # use of convhulln function
+    # area
+    area[i,2] <- convhulln(traitdat,"FA")$area
+    # identity of vertices
+    vert0<-convhulln(traitdat,"Fx TO 'vert.txt'")
+    vert1<-scan("vert.txt",quiet=T)
+    vert2<-vert1+1
+    
+    vertices <- vert2[-1]
+    
+    traitdat <- traitdat[-vertices,]
+    
+    area[i,1] <- length(vertices)
+    
+  }
+  area<-na.omit(area)
+  # Output (2 numbers): Number of points touched by areas; Sum of the areas (TOP index)
+  colSums(area)
+}
+
+#### Function to compute TED index (from Fontana et al. 2015)
+# List of possible REFERENCES
+# Define maximum number of points (max1) and number of traits under consideration (dim1)
+# Alternatively, it is possible to manually define max1 and dim1!!
+max1 <- nind
+dim1 <- ntraits
+
+ref.matrix<-matrix(ncol=2,nrow=max1)
+if (dim1 == 1) {
+  i=0.9 } else { i=1.9 }
+n <- 0
+rows1<-0
+
+while(rows1<max1){
+  i=i+0.1
+  n=n+1
+  traits.ref <- sphere.solid.grid(p=dim1, n=i)
+  rows1<-nrow(traits.ref$points)
+  ref.matrix[n,1]<-i
+  ref.matrix[n,2]<-rows1
+  
+}
+
+k <- i+1
+while(i<k){
+  i=i+0.1
+  n=n+1
+  traits.ref <- sphere.solid.grid(p=dim1, n=i)
+  rows1<-nrow(traits.ref$points)
+  ref.matrix[n,1]<-i
+  ref.matrix[n,2]<-rows1
+}
+
+ref.matrix<-na.omit(ref.matrix)
+
+# TED index calculation
+TED.index <- function(traitdat){
+# Find the best REFERENCE (minimum number of individuals >= individuals in the sample)
+  n.sample<-nrow(traitdat)
+  diff1<-matrix(ncol=2,nrow=length(ref.matrix)/2)
+  diff1[,1] <- ref.matrix[,1]
+  diff1[,2] <- ref.matrix[,2]-n.sample
+  min.diff1<-min(diff1[,2][diff1[,2]>=0])
+  select.i<-diff1[diff1[,2]==min.diff1,][1]
+  traits.ref <- sphere.solid.grid(p=dim1, n=select.i)
+  
+# Transform REFERENCE in data frame
+  traits.ref <- as.vector(traits.ref$points)
+  ind<-length(traits.ref)/dim1
+  reference<-matrix(ncol=dim1,nrow=ind)
+  for (j in 1:dim1){
+    reference[,j] <- traits.ref[((j-1)*ind+1):(j*ind)]
+  }
+  traits.ref <- as.data.frame(reference)
+  
+# Ev. delete individuals in order to have the same number as in the sample
+  x <- nrow(traits.ref)-nrow(traitdat)
+  
+  if (x!=0){
+    
+    # coordinates of the center of gravity of the vertices (Gv)
+    baryv<-apply(traits.ref,2,mean)
+    
+    # euclidian dstances to Gv (dB)
+    distbaryv<-rep(0,nrow(traits.ref))
+    for (j in 1:nrow(traits.ref))
+      distbaryv[j]<-( sum((traits.ref[j,]-baryv)^2) )^0.5
+    
+    merge1<-data.frame(traits.ref,distbaryv)
+    
+    #sort by distbaryv (descending)
+    sort1 <- merge1[order(-distbaryv),]
+    traits.ref<-sort1[-1:-x,-(ncol(sort1))]
+    
+  }
+  
+  # Compare with sample
+  Distance.method <- "euclidean"
+  D1 <- dist(traitdat, method=Distance.method)
+  density.D <- density(D1)$y
+  rm(D1)
+  D.ref <- dist(traits.ref, method=Distance.method)
+  density.D.ref <- density(D.ref)$y
+  rm(D.ref)
+  
+  results <- KLdiv(cbind(density.D, density.D.ref))
+  
+  value <- results[1,2]
+  
+  TED <- 1-log10(value+1)
+  TED
+  
+}
+
+
+# Compute TOP and TED for every community
+TOP_comms <- c()
+TED_comms <- c()
+for(i in 1:ncomms){
+  ztrait_matrix <- as.data.frame(scale(trait_matrix[[i]][, -1])) # recommended to standardize traits
+  TOP_comms[i] <- TOP.index(ztrait_matrix)[2]
+  TED_comms[i] <- TED.index(ztrait_matrix)
+}
+
+TOP_TED <- data.frame(TOP = TOP_comms, TED = TED_comms)
+ggplot(data = TOP_TED, aes(x = TOP)) +
+  geom_histogram(aes(y = ..density..), bins = 5, colour = "black", fill = "white") +
+  geom_density(alpha = 0.2, fill = "#FF6666")
+
+ggplot(data = TOP_TED, aes(x = TED)) +
+  geom_histogram(aes(y = ..density..), bins = 5, colour = "black", fill = "white") +
+  geom_density(alpha = 0.2, fill = "#FF6666")
+
+```
+
+TOP is more sensitive to the loss of individuals at the edges the distribution, like other functional richness metrics, but also considers changes in the middle of the cloud of data points. We therefore can compare TOP with, for instance, dendrogram-based FD.
+
+```{r corr TOP_dendroFD}
+ggplot(data.frame(TOP = TOP_TED$TOP, dendroFD), aes(x = TOP, y = dendroFD)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson", label.x = 185, label.y = 115)
+```
+
+In this particular case, both are highly correlated as expected, since trait distributions were simulated under a pure random process.
+
+
+\
+
+### Trait-probability density functions
+Carmona et al. (2016) developed a framework to account for the probabilistic nature of functional traits. Basically, functional traits are now conceived as trait probability density (TPD) functions (already used in [Single trait data visualization](#trait_plot), in which each data is represented by an individual, and thus very useful to account for ITV in FD. The TPD of each species (TPDs) are then combined for a given community and weighted for its abundance to compute a TPD for the community (TPDc).
+
+We can first compute 2-dimensional TPDs for species in a given community (e.g., species 1-3, traits V1-V2 in community 5-6).
+```{r TPDs}
+sp135_lab <- trait_matrix[[5]]$species[1:30]
+sp135_traits <- trait_matrix[[5]][1:30, 2:3]
+sp136_lab <- trait_matrix[[6]]$species[1:30]
+sp136_traits <- trait_matrix[[6]][1:30, 2:3]
+sp56 <- c(sp135_lab, sp136_lab)
+traits56 <- rbind(sp135_traits, sp136_traits)
+comm56 <- c(rep("Site.5", 30), rep("Site.6", 30))
+TPDs_13_56 <- TPDs(species = sp56, traits = traits56, sample = comm56) 
+plotTPD(TPD = TPDs_13_56, nRowCol = c(3, 2))
+```
+
+We can then compute the TPD of each species and weight them for species relative abundances to compute TPDc for each site.
+
+```{r TPDc}
+# Trait matrix of individuals
+traits <- do.call(rbind, trait_matrix)[,-1]
+
+# Define the name of the species each individual belongs to
+species <- as.factor(do.call(rbind, trait_matrix)$sp)
+
+# Define the name of the community each individual belongs to
+ind.plot_list <- Map(cbind, trait_matrix, community = names(trait_matrix))
+ind.plot <- as.factor(do.call(rbind, ind.plot_list)$community)
+
+# Compute TPDs and TPDc
+TPDs_spp <- TPDs(species = species, traits = traits[, 1:2], samples = ind.plot) 
+TPDc_comm <- TPDc(TPDs = TPDs_spp, sampUnit = C)
+
+# Compute FD
+TPD_FD <- REND(TPDc = TPDc_comm)
+```
+
+We can plot different metrics and compare these with those already calculated above.
+
+```{r TPD_plots}
+TPD_df <- data.frame(TOP_TED, dendroFD, TPD_FRich = TPD_FD$communities$FRichness,
+                     TPD_FEve = TPD_FD$communities$FEvenness, 
+                     TPD_FDiv = TPD_FD$communities$FDivergence)
+
+p1 <- ggplot(TPD_df, aes(x = TPD_FRich, y = dendroFD)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+p2 <- ggplot(TPD_df, aes(x = TPD_FRich, y = TOP)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+p3 <- ggplot(TPD_df, aes(x = TPD_FEve, y = TED)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+ggarrange(p1, p2, p3, nrow = 1, ncol = 3)
+```
+
+All these metrics are uncorrelated, likely because methods are inherently different. TPD use probability density functions to characterize species and use abundances to weight the relative contribution of species traits to a community. By contrast, the previous methods use raw individual values and do not account for species abundances.
+
+\
+
+### n-dimensional hypervolumes
+n-dimensional hypervolumes are a set of techniques that describe a geometrical shape surrounding species (or individuals for our purpose) in functional trait space, largely resembling the idea of the Hutchinsonian niche. These shapes can be constructed through either non-parametric or parametric methods. 
+
+\
+
+#### Kernel-density hypervolumes
+Kernel density hypervolumes are based on kernel density estimation to construct hypervolumes, and largely resemble the idea of the TPD framework. 
+```{r hypervolumes}
+# Build hypervolumes for each community. For the sake of simplicity, I am computing hypervolumes unweighted for abundance. Further, I used only 10 random points per individual to simulate kernels, but should be increased to a minimum of 100 in practice for a good description of the underlying trait distribution.
+hvlist <- list()
+for(i in 1:ncomms){
+  comm <- matrix(1, nrow = 1, ncol = nsp)
+  hvlist[[i]] <- kernel.build(comm = comm, trait = trait_matrix[[i]][, -1], axes = 2, distance = "gower", method = "gaussian", abund = FALSE, samples.per.point = 10)
+}
+
+kernel_hv <- matrix(NA, nrow = ncomms, ncol = 3)
+  for(i in 1:ncomms){
+    kernel_hv[i, 1] <- kernel.alpha(hvlist[[i]])
+    kernel_hv[i, 2] <- kernel.evenness(hvlist[[i]])
+    kernel_hv[i, 3] <- kernel.dispersion(hvlist[[i]], func = "divergence")
+  }
+colnames(kernel_hv) <- c("hv_richness", "hv_regularity", "hv_divergence")
+
+# Some examples of hypervolumes (communities 1, 5, 10)
+plot(hvlist[[1]])
+plot(hvlist[[5]])
+plot(hvlist[[10]])
+```
+
+```{r kernel_plots}
+kernel_df <- data.frame(kernel_hv, TOP_TED, dendroFD, TPD_FRic =  TPD_FD$communities$FRichness,
+                        TPD_FEve = TPD_FD$communities$FEvenness, 
+                        TPD_FDiv = TPD_FD$communities$FDivergence)
+
+p1 <- ggplot(kernel_df, aes(x = hv_richness, y = dendroFD)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+p2 <- ggplot(kernel_df, aes(x = hv_richness, y = TOP)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+p3 <- ggplot(kernel_df, aes(x = hv_richness, y = TPD_FRic)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+p4 <- ggplot(kernel_df, aes(x = hv_regularity, y = TED)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+p5 <- ggplot(kernel_df, aes(x = hv_regularity, y = TPD_FEve)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+ggarrange(p1, p2, p3, nrow = 1, ncol = 3)
+ggarrange(p4, p5, nrow = 1, ncol = 2)
+```
+
+Again, hypervolume metrics are pretty uncorrelated to those above, because they work differently. However, as they are probabilistic in nature and conceptually similar, the highest correlation is found between kernel hypervolume and TPD functional richness.
+
+\
+
+#### Multivariate normal hypervolumes
+More recently, Lu et al. (2020) proposed to use multivariate normal distributions to delineate n-dimensional hypervolumes (termed 'MVNH framework') and describe the Hutchinsonian niche in terms that can be biologically interpreted. Moreover, this approach allows estimating the relative importance of niche size and distance driven dissimilarity between hypervolumes, and it is computationally faster than non-parametric methods.
+
+```{r MVNH}
+# Function to compute the determinant of the hypervolume based on a multivariate normal distribution (from https://github.com/lvmuyang/MVNH)
+MVNH_det <- function(data=NULL,cov=NULL,var.names=NULL,cov.matrix=F,log=F){
+  # fetch names from the data or covariance matrix
+  if(!cov.matrix){
+    if(is.null(var.names)){
+      if(is.matrix(data) & !is.null(colnames(data))) var.name = colnames(data)
+      if(is.matrix(data) & is.null(colnames(data))) var.name = paste0("variable",1:ncol(data))
+      if(is.data.frame(data)) var.name = names(data)
+    } else {
+      var.name = var.names}
+  } else{
+    if(is.null(var.names)){
+      if(is.matrix(cov) & !is.null(colnames(cov))) var.name = colnames(cov)
+      if(is.matrix(cov) & is.null(colnames(cov))) var.name = paste0("variable",1:ncol(cov))
+      if(is.data.frame(cov)) var.name = names(cov)
+    } else {
+      var.name = var.names}
+  }
+
+  if(cov.matrix){
+    COV = cov
+  } else {
+    COV = cov(data)
+  }
+  s = diag(COV)
+  rho = det(COV)/prod(s)
+  det = c(det(COV),s,rho)
+  names(det) = c("total",var.name,"cor")
+  if(log) {
+    return(log(det))}
+  else{
+    return(det)
+  }
+}
+
+# Compute MVNH for every community
+MVNH_comms <- data.frame(matrix(NA, nrow = ncomms, ncol = ntraits + 2))
+for(i in 1:ncomms){
+  ztrait_matrix <- as.data.frame(scale(trait_matrix[[i]][, -1]))
+  MVNH_comms[i,] <- MVNH_det(ztrait_matrix)
+}
+colnames(MVNH_comms)[1] <- "determinant"
+colnames(MVNH_comms)[ncol(MVNH_comms)] <- "correlation"
+colnames(MVNH_comms)[c(2:(ncol(MVNH_comms)-1))] <- colnames(traits)
+```
+
+Since the determinant of the hypervolume is a measure of niche size, then this metric only reflects functional richness. Again, we can compare this metric with previous indices.
+
+```{r MVNH plots}
+mvnh_df <- cbind(MVNH_comms, dendroFD, TOP = TOP_TED$TOP, kernel_hv, 
+                 TPD_FRic =  TPD_FD$communities$FRichness)
+p1 <- ggplot(data = mvnh_df, aes(x = determinant, y = dendroFD)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+p2 <- ggplot(data = mvnh_df, aes(x = determinant, y = TOP)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+p3 <- ggplot(data = mvnh_df, aes(x = determinant, y = TPD_FRic)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+p4 <- ggplot(data = mvnh_df, aes(x = determinant, y = hv_richness)) +
+  geom_point(size = 2.5) + stat_cor(method = "pearson")
+
+ggarrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
+```
+
+As expected, the determinant of the hypervolume is positively correlated with other functional richness metrics. Yet, functional richness based on probabilistic hypervolumes is far less correlated. This is expected because these largely depend on the irregular shapes built around the cloud of points, which could be certainly very different to an hyper-ellipsoid as the MVNH approach assume.
