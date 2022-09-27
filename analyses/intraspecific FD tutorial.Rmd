@@ -587,7 +587,22 @@ n-dimensional hypervolumes are a set of techniques that describe a geometrical s
 #### Kernel-density hypervolumes
 Kernel density hypervolumes are based on kernel density estimation to construct hypervolumes, and largely resemble the idea of the TPD framework. 
 ```{r hypervolumes}
-# Build hypervolumes for each community. For the sake of simplicity, I am computing hypervolumes unweighted for abundance. Further, I used only 10 random points per individual to simulate kernels, but should be increased to a minimum of 100 in practice for a good description of the underlying trait distribution.
+# Trait matrix of individuals
+traits <- do.call(rbind, trait_matrix)[,-1]
+
+# Community matrix at the individual level
+Ck <- NULL
+for(i in 1:ncomms){
+Ck[[i]] <- matrix(0, nrow = ncomms, ncol = indxcomm)
+Ck[[i]][i, ] <- 1
+}
+Cind <- do.call(cbind, Ck)
+colnames(Cind) <- rownames(traits)
+
+# Build hypervolumes for each community. Due to computheadation times, I use only 10 random points per individual to simulate kernels, but should be increased to a minimum of 100 in practice for a good description of the underlying trait distribution.
+hvlist <- kernel.build(comm = Cind, trait = traits, axes = 2, distance = "gower", method = "gaussian", abund = TRUE, samples.per.point = 10)
+
+
 hvlist <- list()
 for(i in 1:ncomms){
   comm <- matrix(1, nrow = 1, ncol = nsp)
