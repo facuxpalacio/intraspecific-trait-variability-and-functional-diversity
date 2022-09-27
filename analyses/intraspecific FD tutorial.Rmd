@@ -46,7 +46,7 @@ set.seed(999)
 ncomms <- 15
 
 # Species richness
-nsp <- 20
+nsp <- 20 
 
 # Number of traits
 ntraits <- 3
@@ -593,38 +593,28 @@ traits <- do.call(rbind, trait_matrix)[,-1]
 # Community matrix at the individual level
 Ck <- NULL
 for(i in 1:ncomms){
-Ck[[i]] <- matrix(0, nrow = ncomms, ncol = indxcomm)
+Ck[[i]] <- matrix(0, nrow = ncomms, ncol = nindxsp*nsp)
 Ck[[i]][i, ] <- 1
 }
-Cind <- do.call(cbind, Ck)
+Cind <- data.frame(do.call(cbind, Ck))
 colnames(Cind) <- rownames(traits)
 
-# Build hypervolumes for each community. Due to computheadation times, I use only 10 random points per individual to simulate kernels, but should be increased to a minimum of 100 in practice for a good description of the underlying trait distribution.
-hvlist <- kernel.build(comm = Cind, trait = traits, axes = 2, distance = "gower", method = "gaussian", abund = TRUE, samples.per.point = 10)
+# Build hypervolumes for each community. Due to the large amount of computation time required, I use only 10 random points per individual to simulate kernels, but should be increased to a minimum of 100 in practice for a good description of the underlying trait distribution.
+hvlist <- kernel.build(comm = Cind, trait = traits, axes = 2, distance = "gower", method = "gaussian", abund = FALSE, samples.per.point = 10)
 
-
-hvlist <- list()
-for(i in 1:ncomms){
-  comm <- matrix(1, nrow = 1, ncol = nsp)
-  hvlist[[i]] <- kernel.build(comm = comm, trait = trait_matrix[[i]][, -1], axes = 2, distance = "gower", method = "gaussian", abund = FALSE, samples.per.point = 10)
-}
-
-kernel_hv <- matrix(NA, nrow = ncomms, ncol = 3)
-  for(i in 1:ncomms){
-    kernel_hv[i, 1] <- kernel.alpha(hvlist[[i]])
-    kernel_hv[i, 2] <- kernel.evenness(hvlist[[i]])
-    kernel_hv[i, 3] <- kernel.dispersion(hvlist[[i]], func = "divergence")
-  }
-colnames(kernel_hv) <- c("hv_richness", "hv_regularity", "hv_divergence")
+# Compute functional diversity metrics
+hv_richness <- kernel.alpha(hvlist)
+hv_regularity <- kernel.evenness(hvlist)
+hv_divergence <- kernel.dispersion(hvlist, func = "divergence")
 
 # Some examples of hypervolumes (communities 1, 5, 10)
-plot(hvlist[[1]])
-plot(hvlist[[5]])
-plot(hvlist[[10]])
+plot(hvlist[[1]], show.contour = FALSE)
+plot(hvlist[[5]], show.contour = FALSE)
+plot(hvlist[[10]], show.contour = FALSE)
 ```
 
 ```{r kernel_plots}
-kernel_df <- data.frame(kernel_hv, TOP_TED, dendroFD, TPD_FRic =  TPD_FD$communities$FRichness,
+kernel_df <- data.frame(hv_richness, hv_regularity, hv_divergence, TOP_TED, dendroFD, TPD_FRic =  TPD_FD$communities$FRichness,
                         TPD_FEve = TPD_FD$communities$FEvenness, 
                         TPD_FDiv = TPD_FD$communities$FDivergence)
 
@@ -647,7 +637,7 @@ ggarrange(p1, p2, p3, nrow = 1, ncol = 3)
 ggarrange(p4, p5, nrow = 1, ncol = 2)
 ```
 
-Again, hypervolume metrics are pretty uncorrelated to those above, because they work differently. However, as they are probabilistic in nature and conceptually similar, the highest correlation is found between kernel hypervolume and TPD functional richness.
+Hypervolume metrics are positively, although slightly, correlated to those above, because they work differently. However, as they are probabilistic in nature and conceptually similar, the highest correlation is found between kernel hypervolume and TPD functional richness.
 
 \
 
@@ -704,7 +694,7 @@ colnames(MVNH_comms)[c(2:(ncol(MVNH_comms)-1))] <- colnames(traits)
 Since the determinant of the hypervolume is a measure of niche size, then this metric only reflects functional richness. Again, we can compare this metric with previous indices.
 
 ```{r MVNH plots}
-mvnh_df <- cbind(MVNH_comms, dendroFD, TOP = TOP_TED$TOP, kernel_hv, 
+mvnh_df <- cbind(MVNH_comms, dendroFD, TOP = TOP_TED$TOP, hv_richness, 
                  TPD_FRic =  TPD_FD$communities$FRichness)
 p1 <- ggplot(data = mvnh_df, aes(x = determinant, y = dendroFD)) +
   geom_point(size = 2.5) + stat_cor(method = "pearson")
@@ -721,4 +711,4 @@ p4 <- ggplot(data = mvnh_df, aes(x = determinant, y = hv_richness)) +
 ggarrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
 ```
 
-As expected, the determinant of the hypervolume is positively correlated with other functional richness metrics. Yet, functional richness based on probabilistic hypervolumes is far less correlated. This is expected because these largely depend on the irregular shapes built around the cloud of points, which could be certainly very different to an hyper-ellipsoid as the MVNH approach assume.
+As expected, the determinant of the hypervolume is positively correlated with other functional richness metrics. Yet, functional richness based on probabilistic hypervolumes is far less correlated with the MVNH approach. This is expected because these largely depend on the irregular shapes built around the cloud of points that can contain holes, which could be certainly very different to an hyper-ellipsoid as the MVNH approach assume.
