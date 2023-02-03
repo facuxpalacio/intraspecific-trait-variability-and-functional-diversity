@@ -26,7 +26,7 @@ library(knitr) # Improved layout
 library(mobsim) # Community matrices simulation
 library(lme4) # Linear mixed models
 library(boot) # Bootstrap confidence intervals
-library(cati) # T-statistics, Rao's entropy decomposition and ITV simulations
+library(cati) # T-statistics, Rao's entropy decomposition
 library(factoextra) # Plot nice dendrograms
 library(geometry) # for TOP index (convex hulls)
 library(geozoo) # for TED index (spehere random points)
@@ -97,7 +97,7 @@ rownames(C) <- 1:ncomms
 
 \
 
-# Single trait data visualization {#trait_plot}
+# Trait data visualization {#trait_plot}
 As an example, we will base the analysis on community number 5. First, we can explore individual trait distributions and correlations.
 ```{r trait plots}
 T5 <- trait_matrix[[5]]

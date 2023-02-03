@@ -1,0 +1,315 @@
+---
+title: "ITV methods"
+subtitle: "Supplementary material"
+author: 'Code author: Facundo X. Palacio'
+date: "`r Sys.Date()`"
+output: 
+  tufte::tufte_html:
+    toc: true
+---
+
+\ 
+
+```{r setup, include = FALSE}
+# Suppress messages, warnings and errors for document aesthetics.
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, error = FALSE, echo = TRUE)
+```
+
+```{r packages, results = 'hide'}
+# Load packages
+library(ggplot2) # Plotting
+library(GGally) # Plotting
+library(dplyr) # Data handling
+library(tidyr) # Data handling
+library(knitr) # Improved layout
+library(lme4) # Mixed models
+library(cati) # ITV simulations
+library(geometry) # for TOP index (convex hulls)
+library(geozoo) # for TED index (spehere random points)
+library(flexmix) # for TED index (KL divergence)
+library(TPD) # Trait-probability density
+library(alphahull) # Convex hulls
+library(BAT) # Hypervolumes
+```
+
+\
+
+\ 
+```{r TOP_TED}
+#### Function to compute TOP index (from Fontana et al. 2015)
+TOP.index <- function(traitdat){
+  # TOP
+  dim1 <- ncol(traitdat)
+  #definitions: index i, area as empty vector
+  i=0
+  area<-matrix(ncol=2,nrow=nrow(traitdat))
+  while(nrow(traitdat)>dim1){
+    i=i+1
+    # use of convhulln function
+    # area
+    area[i,2] <- convhulln(traitdat,"FA")$area
+    # identity of vertices
+    vert0<-convhulln(traitdat,"Fx TO 'vert.txt'")
+    vert1<-scan("vert.txt",quiet=T)
+    vert2<-vert1+1
+    
+    vertices <- vert2[-1]
+    
+    traitdat <- traitdat[-vertices,]
+    
+    area[i,1] <- length(vertices)
+    
+  }
+  area<-na.omit(area)
+  # Output (2 numbers): Number of points touched by areas; Sum of the areas (TOP index)
+  colSums(area)
+}
+
+#### Function to compute TED index (from Fontana et al. 2015)
+# List of possible REFERENCES
+# Define maximum number of points (max1) and number of traits under consideration (dim1)
+# Alternatively, it is possible to manually define max1 and dim1!!
+max1 <- 200
+dim1 <- 2
+
+ref.matrix<-matrix(ncol=2,nrow=max1)
+if (dim1 == 1) {
+  i=0.9 } else { i=1.9 }
+n <- 0
+rows1<-0
+
+while(rows1<max1){
+  i=i+0.1
+  n=n+1
+  traits.ref <- sphere.solid.grid(p=dim1, n=i)
+  rows1<-nrow(traits.ref$points)
+  ref.matrix[n,1]<-i
+  ref.matrix[n,2]<-rows1
+  
+}
+
+k <- i+1
+while(i<k){
+  i=i+0.1
+  n=n+1
+  traits.ref <- sphere.solid.grid(p=dim1, n=i)
+  rows1<-nrow(traits.ref$points)
+  ref.matrix[n,1]<-i
+  ref.matrix[n,2]<-rows1
+}
+
+ref.matrix<-na.omit(ref.matrix)
+
+# TED index calculation
+TED.index <- function(traitdat){
+# Find the best REFERENCE (minimum number of individuals >= individuals in the sample)
+  n.sample<-nrow(traitdat)
+  diff1<-matrix(ncol=2,nrow=length(ref.matrix)/2)
+  diff1[,1] <- ref.matrix[,1]
+  diff1[,2] <- ref.matrix[,2]-n.sample
+  min.diff1<-min(diff1[,2][diff1[,2]>=0])
+  select.i<-diff1[diff1[,2]==min.diff1,][1]
+  traits.ref <- sphere.solid.grid(p=dim1, n=select.i)
+  
+# Transform REFERENCE in data frame
+  traits.ref <- as.vector(traits.ref$points)
+  ind<-length(traits.ref)/dim1
+  reference<-matrix(ncol=dim1,nrow=ind)
+  for (j in 1:dim1){
+    reference[,j] <- traits.ref[((j-1)*ind+1):(j*ind)]
+  }
+  traits.ref <- as.data.frame(reference)
+  
+# Ev. delete individuals in order to have the same number as in the sample
+  x <- nrow(traits.ref)-nrow(traitdat)
+  
+  if (x!=0){
+    
+    # coordinates of the center of gravity of the vertices (Gv)
+    baryv<-apply(traits.ref,2,mean)
+    
+    # euclidian dstances to Gv (dB)
+    distbaryv<-rep(0,nrow(traits.ref))
+    for (j in 1:nrow(traits.ref))
+      distbaryv[j]<-( sum((traits.ref[j,]-baryv)^2) )^0.5
+    
+    merge1<-data.frame(traits.ref,distbaryv)
+    
+    #sort by distbaryv (descending)
+    sort1 <- merge1[order(-distbaryv),]
+    traits.ref<-sort1[-1:-x,-(ncol(sort1))]
+    
+  }
+  
+  # Compare with sample
+  Distance.method <- "euclidean"
+  D1 <- dist(traitdat, method=Distance.method)
+  density.D <- density(D1)$y
+  rm(D1)
+  D.ref <- dist(traits.ref, method=Distance.method)
+  density.D.ref <- density(D.ref)$y
+  rm(D.ref)
+  
+  results <- KLdiv(cbind(density.D, density.D.ref))
+  
+  value <- results[1,2]
+  
+  TED <- 1-log10(value+1)
+  TED
+  
+}
+```
+
+# Set simulation parameters
+```{r params}
+set.seed(1001)
+
+# Number of communities per simulation scenario
+Ncom <- 5 #10
+
+# Species richness per community
+Nsp <- 10 #20
+
+# Number of individuals per community
+Nind.com <- 50 #200
+
+# Standard deviation of the abundance distribution
+sdlog <- 1.5
+
+# Miminum mean value of the trait distribution
+min_value_traits <- 50
+
+# Maximum mean value of the trait distribution
+max_value_traits <- 100
+
+# Coefficient of variation of intraspecific trait distributions
+ni1 <- 2
+cv_intra_sp <- seq(0.01, 1, length = ni1)
+
+# Coefficient of variation of intracommunity trait distributions
+nj1 <- 2
+cv_intra_com <- seq(0.01, 1, length = nj1)
+
+# Strength of internal filtering
+ni2 <- 2
+Int_Filter_Strength <- seq(0, 100, length = nj2)
+
+# Strength of external filtering
+nj2 <- 2
+Ext_Filter_Strength <- seq(0, 100, length = nj2)
+
+
+# Number of simulations
+nsim <- ni1*nj1*ni1*nj2
+ncoms <- nsim*Ncom
+```
+
+\
+
+# Simulation scenarios
+```{r simulations}
+# Simulate communities with different levels of internal and external filtering
+
+# External-internal filtering combinations
+cv_filter_comb <- expand.grid(cv_intra_com, cv_intra_sp, Int_Filter_Strength, Ext_Filter_Strength)
+colnames(cv_filter_comb) <- c("cv_intra_com", "cv_intra_sp", "Internal_filtering", "External_filtering")
+  
+# Simulate communities (625 en 20 min, 31 sims/min)
+comm_sim <- NULL
+for(i in 1:nsim){
+    comm_sim[[i]] <- RandCom(Ncom = Ncom, Nsp = Nsp, Nind.com = Nind.com, 
+                              sdlog = sdlog, min_value_traits = min_value_traits, 
+                              max_value_traits = max_value_traits,
+                              cv_intra_sp = cv_filter_comb[i, 1], 
+                              cv_intra_com = cv_filter_comb[i, 2],
+                              Int_Filter_Strength = cv_filter_comb[i, 3],
+                              Ext_Filter_Strength = cv_filter_comb[i, 4], 
+                              Filter = "Both")
+  }
+
+
+# Check congruence on expected ecological patterns
+comms <- list(comm_sim[[1]], comm_sim[[101]], comm_sim[[505]], comm_sim[[625]])
+var_comps <- matrix(NA, nrow = 4, ncol = 3)
+for(i in 1:4){
+var_comps_V1 <- lmer(trait1 ~ 1|com/sp, REML = TRUE, data = comms[[i]]$data)
+vc <- VarCorr(var_comps_V1)
+varcomps1 <- c(unlist(lapply(vc, diag)), attr(vc, "sc")^2)
+var_comps[i,] <- t(100*(varcomps1/sum(varcomps1)))
+}
+colnames(var_comps) <- c("Intra_comm_perc", "Between_comm_perc", "Within_species_perc")
+rownames(var_comps) <- c("Low_int_low_ext", "Low_int_high_ext", "High_int_low_ext", "High_int_high_ext")
+var_comps
+
+# High internal, High external
+ggplot(comm_sim[[625]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4)
+
+# Low internal, high external
+ggplot(comm_sim[[505]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4)
+
+# High internal, low external
+ggplot(comm_sim[[101]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4)
+
+# Low internal, Low external
+ggplot(comm_sim[[1]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4)
+
+dendroFD <- TOP_comms <- TED_comms <- TPD_FRic <- TPD_FEve <- TPD_FDiv <- hv_richness <- hv_regularity <- hv_divergence <- matrix(NA, nrow = nsim, ncol = Ncom)
+Ck <- NULL
+
+for(i in 1:nsim){
+  for(j in 1:Ncom){
+   traits <- comm_sim[[i]]$data
+   coms <- paste0("com_", LETTERS[1:Ncom])
+   subcom <- subset(traits, com == coms[j])
+   subtraits <- subcom[, c("trait1", "trait2")]
+   trait_matrix <- na.omit(as.data.frame(scale(subtraits)))
+   dendroFD[i,j] <- SumBL(trait_matrix, gower.dist = FALSE, method.hclust = "average", 
+                        scale.tr = TRUE, method.dist = "euclidian")
+   #TOP_comms[i,j] <- TOP.index(trait_matrix)[2]
+   #TED_comms[i,j] <- TED.index(trait_matrix)
+
+  # Community matrix at the individual level (for hypervolumes)
+  Ck[[j]] <- matrix(0, nrow = Ncom, ncol = nrow(traits))
+  Ck[[j]][j, ] <- 1
+  }
+
+  #Cind <- data.frame(do.call(cbind, Ck))
+  #colnames(Cind) <- 1:(Ncom*nrow(traits))
+
+  # Community matrix
+  C <- as.matrix(table(traits$com, traits$sp))
+
+  # Compute TPDs and TPDc
+  TPDs_spp <- TPDs(species = traits$sp, traits = traits[, c("trait1", "trait2")]) 
+  TPDc_comm <- TPDc(TPDs = TPDs_spp, sampUnit = C)
+
+  # Compute TPD_FD
+  TPD_FD <- REND(TPDc = TPDc_comm)
+  TPD_FRic[i,] <- TPD_FD$communities$FRichness
+  TPD_FEve[i,] <-TPD_FD$communities$FEvenness
+  TPD_FDiv[i,] <-TPD_FD$communities$FDivergence
+ 
+
+  # Hypervolumes
+  #hvlist <- kernel.build(comm = Cind, trait = traits, axes = 2, distance = "gower", method = "gaussian", abund = FALSE, samples.per.point = 5)
+
+  # Compute functional diversity metrics
+  #hv_richness[i,] <- kernel.alpha(hvlist)
+  #hv_regularity[i,] <- kernel.evenness(hvlist)
+  #hv_divergence[i,] <- kernel.dispersion(hvlist, func = "divergence")
+ }
+
+FD_itv <- data.frame(dendroFD, TOP_comms, TED_comms, 
+  TPD_FRich = TPD_FD$communities$FRichness,
+  TPD_FEve = TPD_FD$communities$FEvenness, 
+  TPD_FDiv = TPD_FD$communities$FDivergence))
+
+```
+
+\
+
+# Metrics correlations
+```{r correlations}
+ggpairs(FD_itv) 
+ggcorr(FD_itv, palette = "RdBu", label = TRUE)
+```
