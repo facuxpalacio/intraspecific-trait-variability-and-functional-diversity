@@ -1,0 +1,290 @@
+---
+title: "ITV methods"
+subtitle: "Supplementary material"
+author: 'Code author: Facundo X. Palacio'
+date: "`r Sys.Date()`"
+output: 
+  tufte::tufte_html:
+    toc: true
+---
+
+\ 
+
+```{r setup, include = FALSE}
+# Suppress messages, warnings and errors for document aesthetics.
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, error = FALSE, echo = TRUE)
+```
+
+```{r packages, results = 'hide'}
+# Load packages
+library(ggplot2) # Plotting
+library(GGally) # Plotting
+library(dplyr) # Data handling
+library(tidyr) # Data handling
+library(knitr) # Improved layout
+library(lme4) # Mixed models
+library(cati) # ITV simulations
+library(geometry) # for TOP index (convex hulls)
+library(geozoo) # for TED index (spehere random points)
+library(flexmix) # for TED index (KL divergence)
+library(TPD) # Trait-probability density
+library(alphahull) # Convex hulls
+library(BAT) # Hypervolumes
+```
+
+\ 
+
+# TOP and TED index functions
+```{r TOP_TED}
+#### Function to compute TOP index (from Fontana et al. 2015)
+TOP.index <- function(traitdat){
+  # TOP
+  dim1 <- ncol(traitdat)
+  #definitions: index i, area as empty vector
+  i=0
+  area<-matrix(ncol=2,nrow=nrow(traitdat))
+  while(nrow(traitdat)>dim1){
+    i=i+1
+    # use of convhulln function
+    # area
+    area[i,2] <- convhulln(traitdat,"FA")$area
+    # identity of vertices
+    vert0<-convhulln(traitdat,"Fx TO 'vert.txt'")
+    vert1<-scan("vert.txt",quiet=T)
+    vert2<-vert1+1
+    
+    vertices <- vert2[-1]
+    
+    traitdat <- traitdat[-vertices,]
+    
+    area[i,1] <- length(vertices)
+    
+  }
+  area<-na.omit(area)
+  # Output (2 numbers): Number of points touched by areas; Sum of the areas (TOP index)
+  colSums(area)
+}
+
+#### Function to compute TED index (from Fontana et al. 2015)
+# List of possible REFERENCES
+# Define maximum number of points (max1) and number of traits under consideration (dim1)
+# Alternatively, it is possible to manually define max1 and dim1!!
+max1 <- 200
+dim1 <- 2
+
+ref.matrix<-matrix(ncol=2,nrow=max1)
+if (dim1 == 1) {
+  i=0.9 } else { i=1.9 }
+n <- 0
+rows1<-0
+
+while(rows1<max1){
+  i=i+0.1
+  n=n+1
+  traits.ref <- sphere.solid.grid(p=dim1, n=i)
+  rows1<-nrow(traits.ref$points)
+  ref.matrix[n,1]<-i
+  ref.matrix[n,2]<-rows1
+  
+}
+
+k <- i+1
+while(i<k){
+  i=i+0.1
+  n=n+1
+  traits.ref <- sphere.solid.grid(p=dim1, n=i)
+  rows1<-nrow(traits.ref$points)
+  ref.matrix[n,1]<-i
+  ref.matrix[n,2]<-rows1
+}
+
+ref.matrix<-na.omit(ref.matrix)
+
+# TED index calculation
+TED.index <- function(traitdat){
+# Find the best REFERENCE (minimum number of individuals >= individuals in the sample)
+  n.sample<-nrow(traitdat)
+  diff1<-matrix(ncol=2,nrow=length(ref.matrix)/2)
+  diff1[,1] <- ref.matrix[,1]
+  diff1[,2] <- ref.matrix[,2]-n.sample
+  min.diff1<-min(diff1[,2][diff1[,2]>=0])
+  select.i<-diff1[diff1[,2]==min.diff1,][1]
+  traits.ref <- sphere.solid.grid(p=dim1, n=select.i)
+  
+# Transform REFERENCE in data frame
+  traits.ref <- as.vector(traits.ref$points)
+  ind<-length(traits.ref)/dim1
+  reference<-matrix(ncol=dim1,nrow=ind)
+  for (j in 1:dim1){
+    reference[,j] <- traits.ref[((j-1)*ind+1):(j*ind)]
+  }
+  traits.ref <- as.data.frame(reference)
+  
+# Ev. delete individuals in order to have the same number as in the sample
+  x <- nrow(traits.ref)-nrow(traitdat)
+  
+  if (x!=0){
+    
+    # coordinates of the center of gravity of the vertices (Gv)
+    baryv<-apply(traits.ref,2,mean)
+    
+    # euclidian dstances to Gv (dB)
+    distbaryv<-rep(0,nrow(traits.ref))
+    for (j in 1:nrow(traits.ref))
+      distbaryv[j]<-( sum((traits.ref[j,]-baryv)^2) )^0.5
+    
+    merge1<-data.frame(traits.ref,distbaryv)
+    
+    #sort by distbaryv (descending)
+    sort1 <- merge1[order(-distbaryv),]
+    traits.ref<-sort1[-1:-x,-(ncol(sort1))]
+    
+  }
+  
+  # Compare with sample
+  Distance.method <- "euclidean"
+  D1 <- dist(traitdat, method=Distance.method)
+  density.D <- density(D1)$y
+  rm(D1)
+  D.ref <- dist(traits.ref, method=Distance.method)
+  density.D.ref <- density(D.ref)$y
+  rm(D.ref)
+  
+  results <- KLdiv(cbind(density.D, density.D.ref))
+  
+  value <- results[1,2]
+  
+  TED <- 1-log10(value+1)
+  TED
+  
+}
+```
+
+\
+
+# Set simulation parameters
+```{r params}
+set.seed(665)
+# Number of simulations
+nsim <- 10
+
+# Number of communities
+ncomms <- 3 #15
+
+# Species richness
+nsp <- 5 #20 
+
+# Number of individuals sampled per species
+nindxsp <- 5 #10
+
+# Community means and variances (the greater the overall variance and the lower the community variance, the greater the external filtering)
+min_trait_comm <- seq(20, 0, length = nsim)
+max_trait_comm <- seq(30, 50, length = nsim)
+
+mean_comm <- as.data.frame(matrix(NA, nrow = nsim, ncol = ncomms))
+for(i in 1:nsim){
+mean_comm[i, ] <- seq(min_trait_comm[i], max_trait_comm[i], length = ncomms)
+}
+colnames(mean_comm) <- paste("comm", 1:ncomms, sep = "")
+
+# Overall trait mean (fixed for every iteration)
+mean_traits <- rowMeans(mean_comm)
+
+# Create combinations of each community mean with each community variance (the lower the variance, the greater the external filtering)
+mean_comm_sim <- mean_comm[rep(1:nsim, nsim), ]
+mean_comm_sim$cv_comm <- sort(rep(seq(0.5, 1, length = nsim), nsim)) # Parameter to change
+SDcomm <- mean_comm_sim$cv_comm*mean_comm_sim[, 1:ncomms]
+
+# Intraspecific variance (the lower the variance, the greater the internal filtering)
+cv_sp <- seq(0.05, 0.5, length = nsim) # Parameter to change
+```
+
+# Trait matrix at the individual level
+```{r traits}
+trait_matrix <- list()
+
+# Matrix of species mean traits (community by trait matrix)
+N <- nrow(mean_comm_sim)
+mean_sp <- matrix(NA, nrow = N, ncol = nsp*ncomms)
+for(i in 1:N){
+# Species mean traits per community (community by species matrix)
+mean_sp[i, ] <- rnorm(n = nsp*ncomms, mean = sort(rep(as.numeric(mean_comm_sim[i, 1:ncomms]), nindxsp)), 
+                        sd = as.numeric(SDcomm[i, ]))
+}
+
+# Individual trait values per species (aca me quede)
+list_names <- 1:(nsim*nsim)
+list_trait_matrix <- list()
+
+for(i in 1:nsim){
+list_trait_matrix[[i]] <- list()
+  for(j in 1:nsim){
+ITV <- mean_sp[i, ]*cv_sp[j] # vector of intraspecific trait variances 
+list_trait_matrix[[i]][[j]] <- rnorm(n = nindxsp*nsp*ncomms, mean = sort(rep(mean_sp[i, ], nindxsp)), 
+                                                       sd = ITV)
+}
+}
+
+trait_matrix <- as.data.frame(do.call("cbind", do.call("cbind", list_trait_matrix)))
+
+trait_matrix$comm <- sort(rep(1:ncomms, nindxsp*nsp))
+trait_matrix$sp <- rep(sort(rep(1:nsp, nindxsp)), ncomms)
+```
+# plot_comm_trait function for plotting intraspecific trait variability
+# trait_matrix = dataframe with a trait, species and community labels
+# trait = vector of trait values
+# comm_label = vector of community labels
+# sp_label = vector of species labels
+# species = whether to plot species trait distributions
+
+plot_comm_trait <- function(trait_matrix, trait, comm_label, sp_label, species = FALSE){
+plot(x = trait, y = trait, xlab = "Trait", ylab  = "Density",
+     xlim = c(0, 50),
+     ylim = c(0, 1), type = "n")
+
+# Plot community distributions
+col_comm <- sort(rainbow(length(unique(comm_label))))
+ncomms <- length(unique(comm_label)) # number of communities
+for(i in 1:ncomms){
+comm_i <- subset(trait_matrix, comm_label == i)
+x <- seq(min(comm_i$trait, na.rm = T) - 3, max(comm_i$trait, na.rm = T) + 3, length = 200)
+y <- dnorm(x, mean = mean(comm_i$trait, na.rm = T), sd = sd(comm_i$trait, na.rm = T))
+lines(x, y, lwd = 3, col = col_comm[i])
+}
+
+if (species == TRUE){
+# Plot species distributions
+col_sp <- sort(rep(rainbow(length(unique(comm_label))), nsp)) # same color for each spp belonging to the same community
+nsp <- length(unique(sp_label)) # number of species
+N <- nsp*ncomms
+sp_comm <- paste(sp_label, comm_label, sep = ".")
+nindxsp <- as.numeric(table(sp_comm)) # number of individuals per species and community
+trait_matrix$sp_dist <- sort(rep(1:N, nindxsp))
+for(i in 1:N){
+sp_i <- subset(trait_matrix, sp_dist == i)
+x <- seq(min(sp_i$trait, na.rm = T) - 3, max(sp_i$trait, na.rm = T) + 3, length = 200)
+y <- dnorm(x, mean = mean(sp_i$trait, na.rm = T), sd = sd(sp_i$trait, na.rm = T))
+lines(x, y, col = col_sp[i])
+}
+}
+}
+
+# Check ecological consistence
+# High external filtering, high internal filtering
+subtrait <- data.frame(trait = trait_matrix$V1, comm = trait_matrix$comm, sp = trait_matrix$sp)
+plot_comm_trait(trait_matrix = subtrait, trait = subtrait$trait, comm_label = subtrait$comm, sp_label = subtrait$sp, species = T)
+
+# High external filtering, low internal filtering
+subtrait <- data.frame(trait = trait_matrix$V10, comm = trait_matrix$comm, sp = trait_matrix$sp)
+plot_comm_trait(trait_matrix = subtrait, trait = subtrait$trait, comm_label = subtrait$comm, sp_label = subtrait$sp, species = T)
+
+# Low external filtering, high internal filtering
+subtrait <- data.frame(trait = trait_matrix$V91, comm = trait_matrix$comm, sp = trait_matrix$sp)
+plot_comm_trait(trait_matrix = subtrait, trait = subtrait$trait, comm_label = subtrait$comm, sp_label = subtrait$sp, species = T)
+
+# Low external filtering, low internal filtering
+subtrait <- data.frame(trait = trait_matrix$V100, comm = trait_matrix$comm, sp = trait_matrix$sp)
+plot_comm_trait(trait_matrix = subtrait, trait = subtrait$trait, comm_label = subtrait$comm, sp_label = subtrait$sp, species = T)
+
+
+

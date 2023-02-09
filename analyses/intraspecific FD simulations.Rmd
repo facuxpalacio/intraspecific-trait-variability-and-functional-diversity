@@ -32,9 +32,8 @@ library(alphahull) # Convex hulls
 library(BAT) # Hypervolumes
 ```
 
-\
-
 \ 
+
 ```{r TOP_TED}
 #### Function to compute TOP index (from Fontana et al. 2015)
 TOP.index <- function(traitdat){
@@ -184,23 +183,22 @@ max_value_traits <- 100
 
 # Coefficient of variation of intraspecific trait distributions
 ni1 <- 2
-cv_intra_sp <- seq(0.01, 1, length = ni1)
+cv_intra_sp <- seq(0.0001, 1, length = ni1)
 
 # Coefficient of variation of intracommunity trait distributions
 nj1 <- 2
-cv_intra_com <- seq(0.01, 1, length = nj1)
+cv_intra_com <- seq(0.001, 1, length = nj1)
 
 # Strength of internal filtering
 ni2 <- 2
-Int_Filter_Strength <- seq(0, 100, length = nj2)
+Int_Filter_Strength <- seq(0, 100, length = ni2)
 
 # Strength of external filtering
 nj2 <- 2
 Ext_Filter_Strength <- seq(0, 100, length = nj2)
 
-
 # Number of simulations
-nsim <- ni1*nj1*ni1*nj2
+nsim <- ni1*nj1*ni2*nj2
 ncoms <- nsim*Ncom
 ```
 
@@ -229,29 +227,32 @@ for(i in 1:nsim){
 
 
 # Check congruence on expected ecological patterns
-comms <- list(comm_sim[[1]], comm_sim[[101]], comm_sim[[505]], comm_sim[[625]])
+comms <- list(comm_sim[[1]], 
+              comm_sim[[4]], 
+              comm_sim[[13]],  
+              comm_sim[[nsim]]) 
 var_comps <- matrix(NA, nrow = 4, ncol = 3)
 for(i in 1:4){
 var_comps_V1 <- lmer(trait1 ~ 1|com/sp, REML = TRUE, data = comms[[i]]$data)
 vc <- VarCorr(var_comps_V1)
 varcomps1 <- c(unlist(lapply(vc, diag)), attr(vc, "sc")^2)
-var_comps[i,] <- t(100*(varcomps1/sum(varcomps1)))
+var_comps[i, ] <- t(100*(varcomps1/sum(varcomps1)))
 }
-colnames(var_comps) <- c("Intra_comm_perc", "Between_comm_perc", "Within_species_perc")
+colnames(var_comps) <- c("Intra_comm_perc", "Between_comm_perc", "Intra_species_perc")
 rownames(var_comps) <- c("Low_int_low_ext", "Low_int_high_ext", "High_int_low_ext", "High_int_high_ext")
 var_comps
 
-# High internal, High external
-ggplot(comm_sim[[625]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4)
+# Low spp and comm variability with no filtering 
+ggplot(comms[[1]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4, adjust = 3)
 
-# Low internal, high external
-ggplot(comm_sim[[505]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4)
+# High spp and comm variability with no filtering
+ggplot(comms[[2]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4)
 
-# High internal, low external
-ggplot(comm_sim[[101]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4)
+# Low spp and comm variability with high filtering
+ggplot(comms[[3]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4)
 
-# Low internal, Low external
-ggplot(comm_sim[[1]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4)
+# High spp and comm variability with high filtering
+ggplot(comms[[4]]$data, aes(x = trait1, fill = as.factor(com))) + geom_density(alpha = 0.4)
 
 dendroFD <- TOP_comms <- TED_comms <- TPD_FRic <- TPD_FEve <- TPD_FDiv <- hv_richness <- hv_regularity <- hv_divergence <- matrix(NA, nrow = nsim, ncol = Ncom)
 Ck <- NULL
