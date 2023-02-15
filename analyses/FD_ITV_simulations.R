@@ -1,7 +1,6 @@
 #### Load packages
 library(ggplot2) # Plotting
 library(GGally) # Plotting
-library(knitr) # Improved layout
 library(cati) # Dendrogram-based index
 library(geometry) # for TOP index (convex hulls)
 library(geozoo) # for TED index (spehere random points)
@@ -332,7 +331,7 @@ one_every_10_column <- rep(c(1,rep(0, 9)), 100)
 trait1_matrix <- trait1_matrix[, one_every_10_column == 1]
 trait2_matrix <- trait2_matrix[, one_every_10_column == 1]
 
-for(j in 1:ncol(trait1_matrix)){ # 5 columns = 4 min
+for(j in 1:ncol(trait1_matrix)){ 
   for(i in 1:ncomms){
    traits <- na.omit(data.frame(trait1 = trait1_matrix[, j], trait2 = trait2_matrix[, j], comm, sp))
    subcom <- subset(traits, comm == comm_names[i])
@@ -382,4 +381,4 @@ FD_itv <- data.frame(dendroFD = as.vector(dendroFD), TOP = as.vector(TOP_comms),
 
 #### Metrics correlations
 ggpairs(FD_itv)
-ggcorr(FD_itv, palette = "RdBu", label = TRUE)
+ggcorr(FD_itv, palette = "RdBu", label = TRUE, method = c("pairwise", "spearman"))
