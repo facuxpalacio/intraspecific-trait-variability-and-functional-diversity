@@ -591,13 +591,9 @@ Kernel density hypervolumes are based on kernel density estimation to construct 
 traits <- do.call(rbind, trait_matrix)[,-1]
 
 # Community matrix at the individual level
-Ck <- NULL
-for(i in 1:ncomms){
-Ck[[i]] <- matrix(0, nrow = ncomms, ncol = nindxsp*nsp)
-Ck[[i]][i, ] <- 1
-}
-Cind <- data.frame(do.call(cbind, Ck))
-colnames(Cind) <- rownames(traits)
+traits$comm <- sort(rep(1:ncomms, nindxsp*nsp))
+traits$sp_ind <- 1:nrow(traits)
+Cind <- as.data.frame.matrix(table(traits$comm, traits$sp_ind))
 
 # Build hypervolumes for each community. Due to the large amount of computation time required, I use only 10 random points per individual to simulate kernels, but should be increased to a minimum of 100 in practice for a good description of the underlying trait distribution.
 hvlist <- kernel.build(comm = Cind, trait = traits, axes = 2, distance = "gower", method = "gaussian", abund = FALSE, samples.per.point = 10)
