@@ -1,7 +1,7 @@
 #### Load packages
 library(ggplot2) # Plotting
 library(GGally) # Plotting
-library(cati) # Dendrogram-based index
+library(fundiv) # Dendrogram-based index
 library(geometry) # for TOP index (convex hulls)
 library(geozoo) # for TED index (spehere random points)
 library(flexmix) # for TED index (KL divergence)
@@ -133,41 +133,6 @@ TED.index <- function(traitdat){
   
 }
 
-#### Function to compute the determinant of the hypervolume based on a multivariate normal distribution (from https://github.com/lvmuyang/MVNH)
-MVNH_det <- function(data=NULL,cov=NULL,var.names=NULL,cov.matrix=F,log=F){
-  # fetch names from the data or covariance matrix
-  if(!cov.matrix){
-    if(is.null(var.names)){
-      if(is.matrix(data) & !is.null(colnames(data))) var.name = colnames(data)
-      if(is.matrix(data) & is.null(colnames(data))) var.name = paste0("variable",1:ncol(data))
-      if(is.data.frame(data)) var.name = names(data)
-    } else {
-      var.name = var.names}
-  } else{
-    if(is.null(var.names)){
-      if(is.matrix(cov) & !is.null(colnames(cov))) var.name = colnames(cov)
-      if(is.matrix(cov) & is.null(colnames(cov))) var.name = paste0("variable",1:ncol(cov))
-      if(is.data.frame(cov)) var.name = names(cov)
-    } else {
-      var.name = var.names}
-  }
-
-  if(cov.matrix){
-    COV = cov
-  } else {
-    COV = cov(data)
-  }
-  s = diag(COV)
-  rho = det(COV)/prod(s)
-  det = c(det(COV),s,rho)
-  names(det) = c("total",var.name,"cor")
-  if(log) {
-    return(log(det))}
-  else{
-    return(det)
-  }
-}
-
 #### Set simulation parameters
 set.seed(665)
 # Number of simulations
@@ -182,14 +147,9 @@ nsp <- 10
 # Number of individuals sampled per species
 nindxsp <- 5
 
-# Number of traits
-ntraits <- 2
-
 # Community means and variances (the greater the overall variance and the lower the community variance, the greater the external filtering)
 min_trait1_comm <- seq(20, 10, length = nsim)
 max_trait1_comm <- seq(25, 50, length = nsim)
-min_trait2_comm <- seq(20, 50, length = nsim)
-max_trait2_comm <- seq(60, 80, length = nsim)
 
 mean1_comm <- as.data.frame(matrix(NA, nrow = nsim, ncol = ncomms))
 for(i in 1:nsim){
@@ -198,7 +158,8 @@ mean1_comm[i, ] <- seq(min_trait1_comm[i], max_trait1_comm[i], length = ncomms)
 
 mean2_comm <- as.data.frame(matrix(NA, nrow = nsim, ncol = ncomms))
 for(i in 1:nsim){
-mean2_comm[i, ] <- seq(min_trait2_comm[i], max_trait2_comm[i], length = ncomms)
+sd_comms <- seq(5, 20, length = nsim)
+mean2_comm[i, ] <- rnorm(n = ncomms, mean = 50, sd = sd_comms)
 }
 colnames(mean1_comm) <- colnames(mean2_comm) <- paste("comm", 1:ncomms, sep = "")
 
@@ -264,6 +225,18 @@ n_sim_comms <- nrow(trait1_matrix)*ncol(trait1_matrix) # Total number of simulat
 comm <- sort(rep(1:ncomms, nindxsp*nsp))
 sp <- rep(sort(rep(1:nsp, nindxsp)), ncomms)
 
+# Get simulation scenarios names
+sim_names_list <- strsplit(names(trait1_matrix), "_")
+range_trait1 <- c()
+CVcomm <- c()
+CVintrasp <- c()
+for(i in 1:length(sim_names_list)){
+  range_trait1[i] <- as.numeric(sim_names_list[[i]][4]) - as.numeric(sim_names_list[[i]][2])
+  CVcomm[i] <- as.numeric(substring(sim_names_list[[i]][6], 1, 3))
+  CVintrasp[i] <-  as.numeric(sim_names_list[[i]][7])
+}
+
+
 #### Plot community distribution function
 # plot_comm_trait function for plotting intraspecific trait variability
 # trait_matrix = dataframe with a trait, species and community labels
@@ -322,12 +295,18 @@ subtrait <- data.frame(trait = trait1_matrix$mincomm_20_maxcomm_25_CVcomm_0.3.CV
 plot_comm_trait(trait_matrix = subtrait, trait = subtrait$trait, comm_label = subtrait$comm, sp_label = subtrait$sp, species = F)
 
 #### Metric calculations
-dendroFD <- TOP_comms <- TED_comms <- MVNH_det_comms <- MVNH_cor_comms <- TPD_FRic <- TPD_FEve <- TPD_FDiv <- hv_richness <- hv_regularity <- hv_divergence <- matrix(NA, nrow = ncomms, ncol = ncol(trait1_matrix))
+# Correlations between traits among communities
+cor_comms <- NULL
+for(j in 1:ncol(trait1_matrix)){
+  cor_comms[j] <- cor(trait1_matrix[, j], trait2_matrix[, j], use = "complete.obs")
+}
+
+dendroFD <- TOP_comms <- TED_comms <- MVNH_det_comms <- TPD_FRic <- TPD_FEve <- TPD_FDiv <- hv_richness <- hv_regularity <- hv_divergence <- matrix(NA, nrow = ncomms, ncol = ncol(trait1_matrix))
 Ck <- NULL
 comm_names <- unique(comm)
 
 # Extract only 1000 simulated communities (100 columns)
-one_every_10_column <- rep(c(1,rep(0, 9)), 100)
+one_every_10_column <- rep(c(1,rep(0, 9)), 10)
 trait1_matrix <- trait1_matrix[, one_every_10_column == 1]
 trait2_matrix <- trait2_matrix[, one_every_10_column == 1]
 
@@ -336,27 +315,28 @@ for(j in 1:ncol(trait1_matrix)){
    traits <- na.omit(data.frame(trait1 = trait1_matrix[, j], trait2 = trait2_matrix[, j], comm, sp))
    subcom <- subset(traits, comm == comm_names[i])
    subtrait_matrix <- as.data.frame(scale(subcom[, c("trait1", "trait2")]))
-    dendroFD[i, j] <- SumBL(subtrait_matrix, gower.dist = FALSE, method.hclust = "average", 
-                         scale.tr = TRUE, method.dist = "euclidian")
     TOP_comms[i, j] <- TOP.index(subcom[, c("trait1", "trait2")])[2]
     TED_comms[i, j] <- TED.index(subcom[, c("trait1", "trait2")])
-   MVNH_comms <- MVNH_det(subtrait_matrix)
-   MVNH_det_comms[i, j] <- MVNH_comms[1]
-   MVNH_cor_comms[i, j] <- MVNH_comms[length(MVNH_comms)]
+    MVNH_det_comms[i, j] <- det(cov(subcom[, c("trait1", "trait2")]))
   }
 
   # Community by species matrix
-   C <- as.matrix(table(comm, sp))
+   C <- as.matrix(table(traits$comm, traits$sp))
   
-  # Community by individual matrix (for hypervolumes)
+  # Community by individual matrix
    traits$sp_ind <- 1:nrow(traits)
    Cind <- as.data.frame.matrix(table(traits$comm, traits$sp_ind))
+   colnames(Cind) <- 1:nrow(traits)
+   rownames(traits) <- 1:nrow(traits)
 
-  # Compute TPDs and TPDc
+  # Dendrogram-based FD
+    dendroFD[, j] <- FD_dendro(S = traits[, c("trait1", "trait2")], A = Cind, w = NA, Distance.method = "gower", ord = "podani", Cluster.method = "average", stand.x = TRUE, Weigthedby = "abundance")$FDpg
+
+  # TPDs and TPDc
    TPDs_spp <- TPDs(species = traits$sp, traits = traits[, c("trait1", "trait2")]) 
    TPDc_comm <- TPDc(TPDs = TPDs_spp, sampUnit = C)
 
-  # Compute TPD_FD
+  # TPD_FD
    TPD_FD <- REND(TPDc = TPDc_comm)
    TPD_FRic[, j] <- TPD_FD$communities$FRichness
    TPD_FEve[, j] <- TPD_FD$communities$FEvenness
@@ -372,13 +352,17 @@ for(j in 1:ncol(trait1_matrix)){
  }
 
 FD_itv <- data.frame(dendroFD = as.vector(dendroFD), TOP = as.vector(TOP_comms), TED = as.vector(TED_comms), 
-  MVNHdet = as.vector(MVNH_det_comms), MVNHcor = as.vector(MVNH_cor_comms), 
+  MVNHdet = as.vector(MVNH_det_comms),
   TPD_FRich = as.vector(TPD_FRic),
   TPD_FEve = as.vector(TPD_FEve), 
-  TPD_FDiv = as.vector(TPD_FDiv))
+  TPD_FDiv = as.vector(TPD_FDiv),
+  HV_Rich = as.vector(hv_richness),
+  HV_Reg = as.vector(hv_regularity),
+  HV_Dev = as.vector(hv_divergence), n_sim = sort(rep(1:100, nsim)), range_trait1, CVcomm, CVintrasp)
 
 #write.csv(FD_itv, "FD_itv_sims.csv")
 
 #### Metrics correlations
-ggpairs(FD_itv)
-ggcorr(FD_itv, palette = "RdBu", label = TRUE, method = c("pairwise", "spearman"))
+ggpairs(FD_itv[, 1:10], upper = list(continuous = wrap("cor", method = "spearman"))) +
+ggplot2::theme(axis.text.x = element_text(size = 5), axis.text.y = element_text(size = 5))
+
