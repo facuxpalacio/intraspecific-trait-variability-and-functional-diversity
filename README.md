@@ -1,2 +1,2 @@
-# intraspecific functional diversity
+# Intraspecific trait variability and functional diversity
  
