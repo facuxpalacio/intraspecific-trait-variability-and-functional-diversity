@@ -306,7 +306,7 @@ Ck <- NULL
 comm_names <- unique(comm)
 
 # Extract only 1000 simulated communities (100 columns)
-one_every_10_column <- rep(c(1,rep(0, 9)), 10)
+one_every_10_column <- rep(c(1, rep(0, 9)), 10)
 trait1_matrix <- trait1_matrix[, one_every_10_column == 1]
 trait2_matrix <- trait2_matrix[, one_every_10_column == 1]
 
@@ -351,6 +351,17 @@ for(j in 1:ncol(trait1_matrix)){
    hv_divergence[, j] <- kernel.dispersion(hvlist, func = "divergence")
  }
 
+# Simulation parameters retained
+strings_split <- strsplit(names(trait1_matrix),"_")
+range_trait1_sim <- c()
+CVcomm_sim <- c()
+CVintrasp_sim <- c()
+for(i in 1:length(strings_split)){
+range_trait1_sim[i] <- as.numeric(strings_split[[i]][4]) - as.numeric(strings_split[[i]][2])
+CVcomm_sim[i] <- as.numeric(substr(strings_split[[i]][6], 1, 3))
+CVintrasp_sim[i] <- as.numeric(strings_split[[i]][7])
+}
+
 FD_itv <- data.frame(dendroFD = as.vector(dendroFD), TOP = as.vector(TOP_comms), TED = as.vector(TED_comms), 
   MVNHdet = as.vector(MVNH_det_comms),
   TPD_FRich = as.vector(TPD_FRic),
@@ -358,11 +369,15 @@ FD_itv <- data.frame(dendroFD = as.vector(dendroFD), TOP = as.vector(TOP_comms),
   TPD_FDiv = as.vector(TPD_FDiv),
   HV_Rich = as.vector(hv_richness),
   HV_Reg = as.vector(hv_regularity),
-  HV_Dev = as.vector(hv_divergence), n_sim = sort(rep(1:100, nsim)), range_trait1, CVcomm, CVintrasp)
+  HV_Dev = as.vector(hv_divergence), n_sim = sort(rep(1:100, nsim)), range_trait1 = rep(range_trait1_sim, each = nsim), CVcomm = rep(CVcomm_sim, each = nsim), CVintrasp = rep(CVintrasp_sim, each = nsim))
 
 #write.csv(FD_itv, "FD_itv_sims.csv")
+#FD_itv <- read.table("FD_itv_sims.txt", header = TRUE)
 
-#### Metrics correlations
+# Metrics correlations
 ggpairs(FD_itv[, 1:10], upper = list(continuous = wrap("cor", method = "spearman"))) +
 ggplot2::theme(axis.text.x = element_text(size = 5), axis.text.y = element_text(size = 5))
+
+#### Inspecting the effects of ITV on FD
+
 
