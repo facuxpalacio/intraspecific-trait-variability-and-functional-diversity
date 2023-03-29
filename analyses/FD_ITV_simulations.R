@@ -8,6 +8,7 @@ library(flexmix) # for TED index (KL divergence)
 library(TPD) # Trait-probability density
 library(alphahull) # Convex hulls
 library(BAT) # Hypervolumes
+library(lme4) # Mixed models
 
 #### TOP and TED index functions
 #### Function to compute TOP index (from Fontana et al. 2015)
@@ -145,7 +146,7 @@ ncomms <- 10
 nsp <- 10 
 
 # Number of individuals sampled per species
-nindxsp <- 5
+nindxsp <- 10
 
 # Community means and variances (the greater the overall variance and the lower the community variance, the greater the external filtering)
 min_trait1_comm <- seq(20, 10, length = nsim)
@@ -301,14 +302,14 @@ for(j in 1:ncol(trait1_matrix)){
   cor_comms[j] <- cor(trait1_matrix[, j], trait2_matrix[, j], use = "complete.obs")
 }
 
-dendroFD <- TOP_comms <- TED_comms <- MVNH_det_comms <- TPD_FRic <- TPD_FEve <- TPD_FDiv <- hv_richness <- hv_regularity <- hv_divergence <- matrix(NA, nrow = ncomms, ncol = ncol(trait1_matrix))
-Ck <- NULL
-comm_names <- unique(comm)
-
-# Extract only 1000 simulated communities (100 columns)
+# Extract 1000 simulated communities (100 columns)
 one_every_10_column <- rep(c(1, rep(0, 9)), 10)
 trait1_matrix <- trait1_matrix[, one_every_10_column == 1]
 trait2_matrix <- trait2_matrix[, one_every_10_column == 1]
+
+dendroFD <- TOP_comms <- TED_comms <- MVNH_det_comms <- TPD_FRic <- TPD_FEve <- TPD_FDiv <- hv_richness <- hv_regularity <- hv_divergence <- matrix(NA, nrow = ncomms, ncol = ncol(trait1_matrix))
+Ck <- NULL
+comm_names <- unique(comm)
 
 for(j in 1:ncol(trait1_matrix)){ 
   for(i in 1:ncomms){
@@ -330,11 +331,13 @@ for(j in 1:ncol(trait1_matrix)){
    rownames(traits) <- 1:nrow(traits)
 
   # Dendrogram-based FD
-    dendroFD[, j] <- FD_dendro(S = traits[, c("trait1", "trait2")], A = Cind, w = NA, Distance.method = "gower", ord = "podani", Cluster.method = "average", stand.x = TRUE, Weigthedby = "abundance")$FDpg
+   dendroFD[, j] <- FD_dendro(S = traits[, c("trait1", "trait2")], A = Cind, w = NA, Distance.method = "gower", ord = "podani", Cluster.method = "average", stand.x = TRUE, Weigthedby = "abundance")$FDpg
 
   # TPDs and TPDc
-   TPDs_spp <- TPDs(species = traits$sp, traits = traits[, c("trait1", "trait2")]) 
+   TPDs_spp <- TPDs(species = traits$sp, traits = traits[, c("trait1", "trait2")], samples = traits$comm) 
    TPDc_comm <- TPDc(TPDs = TPDs_spp, sampUnit = C)
+   #plotTPD(TPDs_spp, nRowCol = c(5,2))
+   #plotTPD(TPDc_comm, nRowCol = c(5,2))
 
   # TPD_FD
    TPD_FD <- REND(TPDc = TPDc_comm)
@@ -343,12 +346,12 @@ for(j in 1:ncol(trait1_matrix)){
    TPD_FDiv[, j] <- TPD_FD$communities$FDivergence
  
   # Hypervolumes
-   hvlist <- kernel.build(comm = Cind, trait = traits[, c("trait1", "trait2")], axes = 0, distance = "euclidean", method = "gaussian", abund = FALSE, samples.per.point = 5)
+   #hvlist <- kernel.build(comm = Cind, trait = traits[, c("trait1", "trait2")], axes = 0, distance = "euclidean", method = "gaussian", abund = FALSE, samples.per.point = 5)
 
   # Compute functional diversity metrics
-   hv_richness[, j] <- kernel.alpha(hvlist)
-   hv_regularity[, j] <- kernel.evenness(hvlist)
-   hv_divergence[, j] <- kernel.dispersion(hvlist, func = "divergence")
+   #hv_richness[, j] <- kernel.alpha(hvlist)
+   #hv_regularity[, j] <- kernel.evenness(hvlist)
+   #hv_divergence[, j] <- kernel.dispersion(hvlist, func = "divergence")
  }
 
 # Simulation parameters retained
@@ -367,9 +370,10 @@ FD_itv <- data.frame(dendroFD = as.vector(dendroFD), TOP = as.vector(TOP_comms),
   TPD_FRich = as.vector(TPD_FRic),
   TPD_FEve = as.vector(TPD_FEve), 
   TPD_FDiv = as.vector(TPD_FDiv),
-  HV_Rich = as.vector(hv_richness),
-  HV_Reg = as.vector(hv_regularity),
-  HV_Dev = as.vector(hv_divergence), n_sim = sort(rep(1:100, nsim)), range_trait1 = rep(range_trait1_sim, each = nsim), CVcomm = rep(CVcomm_sim, each = nsim), CVintrasp = rep(CVintrasp_sim, each = nsim))
+  #HV_Rich = as.vector(hv_richness),
+  #HV_Reg = as.vector(hv_regularity),
+  #HV_Dev = as.vector(hv_divergence), 
+   n_sim = sort(rep(1:100, nsim)), range_trait1 = rep(range_trait1_sim, each = nsim), CVcomm = rep(CVcomm_sim, each = nsim), CVintrasp = rep(CVintrasp_sim, each = nsim))
 
 #write.csv(FD_itv, "FD_itv_sims.csv")
 #FD_itv <- read.table("FD_itv_sims.txt", header = TRUE)
@@ -378,6 +382,26 @@ FD_itv <- data.frame(dendroFD = as.vector(dendroFD), TOP = as.vector(TOP_comms),
 ggpairs(FD_itv[, 1:10], upper = list(continuous = wrap("cor", method = "spearman"))) +
 ggplot2::theme(axis.text.x = element_text(size = 5), axis.text.y = element_text(size = 5))
 
-#### Inspecting the effects of ITV on FD
+vars <- c(1:10, 1:10)
+vals <- unique(vars)
+every_comb <- t(combn(vals, 2)) # every possible combination of variables
+
+FD_itv$n_sim <- as.factor(FD_itv$n_sim)
+z.coeff <- c()
+ci <- matrix(NA, nrow = length(every_comb), ncol = 2)
+predictor <- c()
+response <- c()
+for(i in 1:nrow(every_comb)){
+p <- scale(FD_itv[, every_comb[i, 1]])
+r <- scale(FD_itv[, every_comb[i, 2]])
+df <- data.frame(r, p, FD_itv$n_sim)
+model <- lmer(r ~ p + (1|n_sim), data = FD_itv)
+z.coeff[i] <- summary(model)$coeff[2,1]
+ci[i,] <- confint(model)[4,]
+predictor[i] <- colnames(FD_itv)[every_comb[i, 1]]
+response[i] <- colnames(FD_itv)[every_comb[i, 2]]
+}
+
+coeff_df <- data.frame(predictor, response, z.coeff, ci)
 
 

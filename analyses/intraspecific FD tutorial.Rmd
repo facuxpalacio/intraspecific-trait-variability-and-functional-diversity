@@ -111,7 +111,7 @@ ggplot(T5, aes(x = V1, y = V2, color = as.factor(species))) +
 
 \
 
-# One species, a single trait: the coefficient of variation
+# One species, a single trait: the coefficient of variation and the phenotypic dissimilarity index
 `uni_cv` computes the coefficient of variation and the Bao's coefficient of variation for a single (continuous) trait and a set of species.
 ```{r cv}
 uni_cv <- function(trait, species){
@@ -146,7 +146,66 @@ trait <- trait_matrix[[5]]$V1
 species <- as.factor(trait_matrix[[5]]$sp)
 kable(uni_cv(trait = trait, species = species), digits = 2)
 ```
-From trait distributions, it seems that species do not strongly vary between them, but there is high variability within the same species.
+Looking at trait distributions, it seems that species do not strongly vary between them, but there is high variability within the same species.
+
+`PhD` computes the phenotypic dissimilarity (PhD) index, which allows quantifying intraspecific trait variability between populations or groups of individuals growing in different environmental conditions while considering the effect of phenotypic variability within populations. To give an example, we will consider that there are two extremes of an environmental gradient (A and B) and will assign individuals of each species to each of these two treatments. Within each species, the lowest values belong to treatment A, and the highest, to treatment B.
+
+```{r PhD}
+PhD <- function(groups, dis){ 
+  Ngroups <- length(unique(groups)) 
+  raoWithin <- numeric(Ngroups)  
+  raoBetween <- numeric((Ngroups^2-Ngroups)/2) 
+  PhD <- numeric((Ngroups^2-Ngroups)/2) 
+  for(i in 1:Ngroups){ 
+    groupAux<-which(groups == unique(groups)[i]) 
+     disAux <- dis[groupAux, groupAux] 
+    raoWithin[i]<- sum(disAux)/length(disAux) 
+    names(raoWithin)[i] <- unique(groups)[i] 
+  } 
+  index<-1 
+  for(i in 1:Ngroups){ 
+    groupAuxi<-which(groups == unique(groups)[i]) 
+    Groupi<-unique(groups)[i] 
+    for(j in 1:Ngroups){ 
+      if(j>i){ 
+        groupAuxj<-which(groups == unique(groups)[j]) 
+        Groupj<-unique(groups)[j] 
+        disAux <- dis[groupAuxi, groupAuxj] 
+        raoBetween[index]<-sum(disAux)/length(disAux) 
+        names(raoBetween)[index] <- paste0(Groupi, "-", Groupj) 
+         
+        PhD[index] <- (raoBetween[index] - 0.5*raoWithin[i] - 0.5*raoWithin[j])/ 
+          (1 - 0.5*raoWithin[i] - 0.5*raoWithin[j]) 
+        names(PhD)[index] <- paste0(Groupi, "-", Groupj) 
+        index<-index+1 
+         
+      } 
+    }   
+  }   
+  meanPhD <- mean(PhD) 
+  return(list(PhD = PhD, meanPhD = meanPhD)) 
+} 
+
+T5 <- T5 %>% group_by(species) %>% arrange(V1, .by_group = TRUE) %>% as.data.frame
+T5$treatment <- rep(rep(c("A", "B"), each = 5), 20)
+
+PhD_index <- c(); CV_A <- c(); CV_B <- c()
+species_names <- unique(T5$species)
+
+for(i in 1:length(species_names)){
+  subtraits <- subset(T5, species == species_names[i])
+  dissim.matrix <- as.matrix(dist(subtraits$V1)) 
+  dissim.matrix <- dissim.matrix/max(dissim.matrix) # bound between 0 and 1
+  PhD_index[i] <- PhD(groups = subtraits$treatment, dis = dissim.matrix)[[1]]
+  CV <- tapply(subtraits$V1, subtraits$treatment, function(x) sd(x, na.rm = TRUE)/mean(x, na.rm = TRUE))
+  CV_A[i] <- CV[1]
+  CV_B[i] <- CV[2]
+}
+
+df_PhD_index <- data.frame(species = species_names, PhD_index, CV_A, CV_B)
+kable(df_PhD_index, digits = 2)
+```
+As it can be seen, the coefficient of variation only allows calculation of ITV within each population, being not able to account for within-population variability.
 
 \
 
@@ -216,7 +275,7 @@ CW
 kable(CWmetrics(comm = C, traits = trait_matrix, species = sp), digits = 2)
 ```
 
-For this particular case, this reveals that not accounting for ITV largely underestimates functional diversity. This is because intraspecific variability is much more higher than interspecific variance.
+For this particular case, this reveals that not accounting for ITV largely underestimates functional diversity. This is because intraspecific variability is much more larger than interspecific variance.
 
 \
 
@@ -241,7 +300,7 @@ var.comp <- function(df, d){
   percn
 }
 
-b <- boot(dataV1, var.comp, R = 1000)
+b <- boot::boot(dataV1, var.comp, R = 1000)
 b
 boot.ci(b, conf = 0.95, type = "bca", index = 1)
 boot.ci(b, conf = 0.95, type = "bca", index = 2)
