@@ -190,9 +190,9 @@ mean_trait1_sp <- mean_trait2_sp <- matrix(NA, nrow = N, ncol = nsp*ncomms)
 for(i in 1:N){
 # Species mean traits per community (community by species matrix)
 mean_trait1_sp[i, ] <- rnorm(n = nsp*ncomms, mean = sort(rep(as.numeric(mean1_comm_sim[i, 1:ncomms]), nindxsp)), 
-                        sd = as.numeric(SD1comm[i, ]))
+                        sd = as.numeric(SD1comm[i, ])) + 40
 mean_trait2_sp[i, ] <- rnorm(n = nsp*ncomms, mean = sort(rep(as.numeric(mean2_comm_sim[i, 1:ncomms]), nindxsp)), 
-                        sd = as.numeric(SD2comm[i, ]))
+                        sd = as.numeric(SD2comm[i, ])) + 75
 }
 
 # Individual trait values per species 
@@ -304,16 +304,26 @@ for(j in 1:ncol(trait1_matrix)){
 
 # Extract 1000 simulated communities (100 columns)
 one_every_10_column <- rep(c(1, rep(0, 9)), 10)
-trait1_matrix <- trait1_matrix[, one_every_10_column == 1]
-trait2_matrix <- trait2_matrix[, one_every_10_column == 1]
+trait1a_matrix <- trait1_matrix[, one_every_10_column == 1]
+trait2a_matrix <- trait2_matrix[, one_every_10_column == 1]
 
+# Check the minimum number of individuals in each simulation (for TPD it must be >4)
+min_obs_sim <- c()
+for(j in 1:ncol(trait1a_matrix)){ 
+   traits <- na.omit(data.frame(trait1 = trait1a_matrix[, j], trait2 = trait2a_matrix[, j], comm, sp))
+   min_obs_sim[j] <- min(table(traits$comm,traits$sp))
+}
+min_obs_sim[min_obs_sim<5]
+which(min_obs_sim %in% min_obs_sim[min_obs_sim<5])
+
+# Compute FD metrics
 dendroFD <- TOP_comms <- TED_comms <- MVNH_det_comms <- TPD_FRic <- TPD_FEve <- TPD_FDiv <- hv_richness <- hv_regularity <- hv_divergence <- matrix(NA, nrow = ncomms, ncol = ncol(trait1_matrix))
 Ck <- NULL
 comm_names <- unique(comm)
 
-for(j in 1:ncol(trait1_matrix)){ 
+for(j in 1:ncol(trait1a_matrix)){ 
   for(i in 1:ncomms){
-   traits <- na.omit(data.frame(trait1 = trait1_matrix[, j], trait2 = trait2_matrix[, j], comm, sp))
+   traits <- na.omit(data.frame(trait1 = trait1a_matrix[, j], trait2 = trait2a_matrix[, j], comm, sp))
    subcom <- subset(traits, comm == comm_names[i])
    subtrait_matrix <- as.data.frame(scale(subcom[, c("trait1", "trait2")]))
     TOP_comms[i, j] <- TOP.index(subcom[, c("trait1", "trait2")])[2]
