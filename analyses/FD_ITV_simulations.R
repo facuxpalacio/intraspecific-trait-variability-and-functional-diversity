@@ -42,10 +42,9 @@ TOP.index <- function(traitdat){
 
 #### Function to compute TED index (from Fontana et al. 2015)
 # List of possible REFERENCES
-# Define maximum number of points (max1) and number of traits under consideration (dim1)
-# Alternatively, it is possible to manually define max1 and dim1!!
+# Define maximum number of points (max1) and number of traits (dim1)
 max1 <- 200
-dim1 <- 2
+dim1 <- 2 
 
 ref.matrix<-matrix(ncol=2,nrow=max1)
 if (dim1 == 1) {
@@ -248,7 +247,7 @@ for(i in 1:length(sim_names_list)){
 
 plot_comm_trait <- function(trait_matrix, trait, comm_label, sp_label, species = FALSE){
 plot(x = trait, y = trait, xlab = "Trait", ylab  = "Density",
-     xlim = c(0, 70),
+     xlim = c(20, 100),
      ylim = c(0, 1), type = "n")
 
 # Plot community distributions
@@ -317,7 +316,7 @@ min_obs_sim[min_obs_sim<5]
 which(min_obs_sim %in% min_obs_sim[min_obs_sim<5])
 
 # Compute FD metrics
-dendroFD <- TOP_comms <- TED_comms <- MVNH_det_comms <- TPD_FRic <- TPD_FEve <- TPD_FDiv <- hv_richness <- hv_regularity <- hv_divergence <- matrix(NA, nrow = ncomms, ncol = ncol(trait1_matrix))
+dendroFD <- TOP_comms <- TED_comms <- MVNH_det_comms <- TPD_FRic <- TPD_FEve <- TPD_FDiv <- hv_richness <- hv_regularity <- hv_divergence <- matrix(NA, nrow = ncomms, ncol = ncol(trait1a_matrix))
 Ck <- NULL
 comm_names <- unique(comm)
 
@@ -356,12 +355,12 @@ for(j in 1:ncol(trait1a_matrix)){
    TPD_FDiv[, j] <- TPD_FD$communities$FDivergence
  
   # Hypervolumes
-   #hvlist <- kernel.build(comm = Cind, trait = traits[, c("trait1", "trait2")], axes = 0, distance = "euclidean", method = "gaussian", abund = FALSE, samples.per.point = 5)
+   hvlist <- kernel.build(comm = Cind, trait = traits[, c("trait1", "trait2")], axes = 0, distance = "euclidean", method = "gaussian", abund = FALSE, samples.per.point = 5)
 
   # Compute functional diversity metrics
-   #hv_richness[, j] <- kernel.alpha(hvlist)
-   #hv_regularity[, j] <- kernel.evenness(hvlist)
-   #hv_divergence[, j] <- kernel.dispersion(hvlist, func = "divergence")
+   hv_richness[, j] <- kernel.alpha(hvlist)
+   hv_regularity[, j] <- kernel.evenness(hvlist)
+   hv_divergence[, j] <- kernel.dispersion(hvlist, func = "divergence")
  }
 
 # Simulation parameters retained
@@ -380,17 +379,21 @@ FD_itv <- data.frame(dendroFD = as.vector(dendroFD), TOP = as.vector(TOP_comms),
   TPD_FRich = as.vector(TPD_FRic),
   TPD_FEve = as.vector(TPD_FEve), 
   TPD_FDiv = as.vector(TPD_FDiv),
-  #HV_Rich = as.vector(hv_richness),
-  #HV_Reg = as.vector(hv_regularity),
-  #HV_Dev = as.vector(hv_divergence), 
-   n_sim = sort(rep(1:100, nsim)), range_trait1 = rep(range_trait1_sim, each = nsim), CVcomm = rep(CVcomm_sim, each = nsim), CVintrasp = rep(CVintrasp_sim, each = nsim))
+  HV_Rich = as.vector(hv_richness),
+  HV_Reg = as.vector(hv_regularity),
+  HV_Dev = as.vector(hv_divergence), 
+  n_sim = sort(rep(1:100, nsim)), 
+  range_trait1 = rep(range_trait1_sim, each = nsim), 
+  CVcomm = rep(CVcomm_sim, each = nsim), 
+  CVintrasp = rep(CVintrasp_sim, each = nsim))
 
 #write.csv(FD_itv, "FD_itv_sims.csv")
 #FD_itv <- read.table("FD_itv_sims.txt", header = TRUE)
 
-# Metrics correlations
-ggpairs(FD_itv[, 1:10], upper = list(continuous = wrap("cor", method = "spearman"))) +
+# Metrics correlations (15x8)
+p <- ggpairs(FD_itv[, 1:10], upper = list(continuous = wrap("cor", method = "spearman"))) +
 ggplot2::theme(axis.text.x = element_text(size = 5), axis.text.y = element_text(size = 5))
+p
 
 vars <- c(1:10, 1:10)
 vals <- unique(vars)
@@ -414,4 +417,4 @@ response[i] <- colnames(FD_itv)[every_comb[i, 2]]
 
 coeff_df <- data.frame(predictor, response, z.coeff, ci)
 
-
+#write.csv(coeff_df, "FD_itv_sims_mixed_models.csv")
