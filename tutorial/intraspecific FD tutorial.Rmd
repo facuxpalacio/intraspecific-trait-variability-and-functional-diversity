@@ -330,11 +330,11 @@ The crossed circle and line represent the observed standardized effect size (SES
 
 \
 
-## Methods to account for intraspecific trait variability in functional diversity
+# Methods to account for intraspecific trait variability in functional diversity
 
 \
 
-### Dendrogram-based functional diversity
+## Dendrogram-based functional diversity
 Some classical approaches in functional diversity, such as the functional dendrogram, have been adapted to account for ITV by building a dendrogram on an individual by trait matrix.
 
 ```{r dendro1}
@@ -360,7 +360,7 @@ ggplot(data = data.frame(FD = dendroFD), aes(x = FD)) +
 
 \
 
-### Variance partitioning and functional diversity
+## Variance partitioning and functional diversity
 Bello et al. (2011) proposed a method to partition FD into within- and between-species FD. Unlike the methods above, now we can identify the relative contribution of interspecific and intraspecific trait variability to functional diversity. 
 
 ```{r RaoITV}
@@ -418,7 +418,7 @@ barplot(var_decomp)
 ```
 \
 
-### Trait onion peeling and trait even distribution
+## Trait onion peeling and trait even distribution
 Fontana et al. (2015) developed two indices to account for individual-level trait richness (TOP = Trait onion peeling) and regularity (TED = trait evenness distribution). TOP computes the sum of all successive convex hull areas touching all individuals within a multidimensional trait space. TED is calculated by comparing the probability distributions of pairwise distances between individuals and between points of a perfectly even distribution. 
 
 ```{r TOP_TED}
@@ -578,7 +578,7 @@ In this particular case, both are highly correlated as expected, since trait dis
 
 \
 
-### Trait-probability density functions
+## Trait-probability density functions
 Carmona et al. (2016) developed a framework to account for the probabilistic nature of functional traits. Basically, functional traits are now conceived as trait probability density (TPD) functions (already used in [Single trait data visualization](#trait_plot), in which each data is represented by an individual, and thus very useful to account for ITV in FD. The TPD of each species (TPDs) are then combined for a given community and weighted for its abundance to compute a TPD for the community (TPDc).
 
 We can first compute 2-dimensional TPDs for species in a given community (e.g., species 1-3, traits V1-V2 in community 5-6).
@@ -638,12 +638,12 @@ All these metrics are uncorrelated, likely because methods are inherently differ
 
 \
 
-### n-dimensional hypervolumes
+## n-dimensional hypervolumes
 n-dimensional hypervolumes are a set of techniques that describe a geometrical shape surrounding species (or individuals for our purpose) in functional trait space, largely resembling the idea of the Hutchinsonian niche. These shapes can be constructed through either non-parametric or parametric methods. 
 
 \
 
-#### Kernel-density hypervolumes
+### Kernel-density hypervolumes
 Kernel density hypervolumes are based on kernel density estimation to construct hypervolumes, and largely resemble the idea of the TPD framework. 
 ```{r hypervolumes}
 # Trait matrix of individuals
@@ -696,7 +696,7 @@ Hypervolume metrics are positively, although slightly, correlated to those above
 
 \
 
-#### Multivariate normal hypervolumes
+### Multivariate normal hypervolumes
 More recently, Lu et al. (2020) proposed to use multivariate normal distributions to delineate n-dimensional hypervolumes (termed 'MVNH framework') and describe the Hutchinsonian niche in terms that can be biologically interpreted. Moreover, this approach allows estimating the relative importance of niche size and distance driven dissimilarity between hypervolumes, and it is computationally faster than non-parametric methods.
 
 ```{r MVNH}
