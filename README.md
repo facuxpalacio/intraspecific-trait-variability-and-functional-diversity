@@ -5,8 +5,6 @@ This repository contains data and code to reproduce analyses reported in the man
 
 **analyses**: contains code to reproduce analyses, simulations and figures.
 
-**data**: includes the dataset analyzed for this manuscript. 
-
 **tutorial**: this walks through a tutorial for different methods describing intraspecific trait variability (ITV) and functional diversity accounting for ITV
 
 The names of all other files should be self-explanatory. If they are not, please open an issue in this repository.
