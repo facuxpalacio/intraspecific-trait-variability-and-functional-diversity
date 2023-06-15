@@ -38,6 +38,11 @@ ggplot(data = DynRB_df, aes(x = ntraits, y = port_mean, col = V1V2, group = V1V2
 ggplot(data = DynRB_df, aes(x = ntraits, y = port_mean, group = ntraits)) + 
   geom_boxplot() + xlab("Number of traits") + ylab("Niche overlap")
 
+ggplot(data = DynRB_df, aes(x = ntraits, y = port_mean, group = ntraits)) + 
+  geom_jitter(position = position_jitter(0.2), alpha = 0.1) +
+  geom_boxplot(alpha = 0.1, col = "darkorchid3", outlier.shape = NA) + xlab("Number of traits") + ylab("Niche overlap") +
+  theme_bw()
+
  write.csv(DynRB_df, "dynRB_corrT_DiasMorph.csv")
 
  # Kernel density overlap (Geange et al. 2015)
@@ -117,8 +122,11 @@ ggplot(data = DynRB_df, aes(x = ntraits, y = port_mean, group = ntraits)) +
  ntraits <- as.factor(sort(rep(1:8, times = length(to.upper.mat[[1]]))))
  NO_df <- data.frame(NO = NO_vector, ntraits)
  
+ # 5x3.5 in
  ggplot(data = NO_df, aes(x = ntraits, y = NO, group = ntraits)) + 
-   geom_boxplot() + xlab("Number of traits") + ylab("Niche overlap")
+   geom_jitter(position = position_jitter(0.2), alpha = 0.1) +
+   geom_boxplot(alpha = 0.1, col = "darkorchid3", outlier.shape = NA) + xlab("Number of traits") + ylab("Niche overlap") +
+   theme_bw()
 
 # Euclidean distance
 euc_dist_list <- list()
