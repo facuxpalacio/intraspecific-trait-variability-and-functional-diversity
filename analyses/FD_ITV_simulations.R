@@ -247,8 +247,8 @@ for(i in 1:length(sim_names_list)){
 
 plot_comm_trait <- function(trait_matrix, trait, comm_label, sp_label, species = FALSE){
 plot(x = trait, y = trait, xlab = "Trait", ylab  = "Density",
-     xlim = c(20, 100),
-     ylim = c(0, 1), type = "n")
+     xlim = c(20, 130),
+     ylim = c(0, 0.2), type = "n")
 
 # Plot community distributions
 col_comm <- sort(rainbow(length(unique(comm_label))))
