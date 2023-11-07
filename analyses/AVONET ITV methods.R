@@ -6,7 +6,7 @@ library(hypervolume)
 library(tidyr)
 set.seed(662)
 
-avo <- read.delim("C:/RD/AVONET_birdtree_xFXP.txt", sep = "\t", header = TRUE)
+avo <- read.delim("C:/RD/AVONET_birdtree_xFXP.txt")
 avo_na <- na.omit(avo)
 
 # Remove species with less than 5 observations
@@ -203,59 +203,75 @@ ggplot(data = dist_df, aes(x = ntraits, y = distance, group = ntraits)) +
   geom_boxplot(alpha = 0.1, col = "darkorchid3", outlier.shape = NA) + xlab("Number of traits") + ylab("Gower dissimilarity") +
   theme_bw()
 
+######  Effects of scale on ITV #########
+# Species widely distributed
+nxcountry <- table(avo_na$Species, avo_na$Country)
+nxcountry_pa <- 1*(nxcountry>0)
+ncountries <- rowSums(nxcountry_pa)
+sp <- names(ncountries[ncountries>5])
+avo_5countries <- avo_na %>% filter(., Species %in% sp)
+nsp <- length(sp)
 
+CV_beak <- list()
 
-
-# Rao entropy
-n <- nrow(genus)
-var_decomp <- decompCTRE(traits = genus[, 4:12], sp = genus$Species, 
-                         ind.plot = c(rep("a", 200), rep("b", 16)), 
-                         print = FALSE)
-var_decomp
-barplot(var_decomp)
-
-nind <- 200 # Number of individuals per community
-nsp <- length(genus_sp)
-sites <- 10
-
-C <- matrix(0, nrow = sites, ncol = nsp)
-for(i in 1:10){
-  C[i, ] <- as.numeric(sim_sad(s_pool = nsp, n_sim = nind, 
-                               sad_type = "lnorm", sad_coef = list("meanlog" = 5, "sdlog" = 0.5), 
-                               fix_s_sim = TRUE))
+# Loop through each species
+for (j in 1:nsp) {
+  spj <- subset(avo, Species == sp[j])
+  country <- unique(spj$Country)
+  ncountry <- length(country)
+  
+  # Initialize a vector to store CV values for this species
+  CV_species <- numeric(ncountry)
+  
+  # Loop through each country
+  for (i in 1:ncountry) {
+    sp_country <- spj[spj$Country %in% country[1:i], ]
+    
+    # Calculate coefficient of variation (CV)
+    cv_value <- 100 * sd(sp_country$Beak.Length_Culmen, na.rm = TRUE) /
+      mean(sp_country$Beak.Length_Culmen, na.rm = TRUE)
+    
+    # Store the CV value for this country
+    CV_species[i] <- cv_value
+  }
+  
+  # Store the CV values for this species in the list
+  CV_beak[[j]] <- CV_species
 }
-comm <- t(C)
-rownames(comm) <- unique(genus$Species)
-witRao <- c()
-betRao <- c()
-totRao <- c()
-mean.traits <- apply(apply(genus[, 4:12], 2, scale), 2, 
-                     function(x) tapply(x, genus$Species, mean, na.rm = TRUE))
-for(i in 1:9){
-  D <- (as.matrix(dist(mean.traits[, 1:i]))^2)/2
-  witRao[i] <- mean(RaoRel(sample = comm, dfunc = D, dphyl = NULL, weight = TRUE, Jost = FALSE, structure = NULL)$FD$Alpha)
-  betRao[i] <- RaoRel(sample = comm, dfunc = D, dphyl = NULL, weight = TRUE, Jost = FALSE, structure = NULL)$FD$Beta_add
-  totRao[i] <- witRao[i] + betRao[i]
+
+# Initialize vectors to store concatenated CV values and corresponding x-values
+all_CV_values <- numeric(0)
+all_x_values <- numeric(0)
+
+# Create a vector to store species labels
+species_labels <- character(0)
+
+# Loop through each species
+for (j in 1:length(CV_beak)) {
+  CV_values <- CV_beak[[j]]
+  num_elements <- length(CV_values)
+  
+  # Create x-values for the current species
+  x_values <- 1:num_elements
+  
+  # Concatenate CV values and x-values to the overall vectors
+  all_CV_values <- c(all_CV_values, CV_values)
+  all_x_values <- c(all_x_values, x_values)
+  
+  # Create a vector of species labels for each data point
+  species_labels <- c(species_labels, rep(j, num_elements))
 }
 
-Rao_df <- data.frame(witRao, betRao)
-Rao_df_perc <- data.frame(perc_witRao = 100*(witRao/totRao), 
-                          perc_betRao = 100*(betRao/totRao))
-Rao_long <- gather(Rao_df, key = var_source, value = var_explained, witRao:betRao, factor_key = TRUE)
-Rao_long$ntraits <- as.factor(rep(1:9, 2))
-Rao_long_perc <- gather(Rao_df_perc, key = var_source, value = var_explained, perc_witRao:perc_betRao, factor_key = TRUE)
-Rao_long_perc$ntraits <- as.factor(rep(1:9, 2))
+# Create a data frame for ggplot2
+data <- data.frame(Index = all_x_values, CV = all_CV_values, Species = species_labels)
 
-ggplot(data = data.frame(ntraits = as.factor(1:9), ITV = Rao_df_perc$perc_witRao), 
-       aes(x = ntraits, y = ITV)) + 
-  geom_bar(stat = "identity") + 
-  xlab("Number of traits") + ylab("Intraspecific trait variability (%)")
+# Plot CV vs geographic range
+ggplot(data, aes(x = Index, y = CV, color = factor(Species))) +
+  geom_point(size = 3, alpha = 0.4) + 
+  geom_smooth(size = 1.2, method = "loess", se = FALSE, span = 0.8) +  
+  xlab("Number of countries a species occurs in") +
+  ylab("Coefficient of variation") +
+  scale_color_discrete(name = "Species", labels = sp) +  
+  theme_minimal()  
 
-ggplot(data = Rao_long, aes(x = ntraits, y = var_explained, fill = var_source)) + 
-  geom_bar(position = "stack", stat = "identity") + 
-  xlab("Number of traits") + ylab("Variance explained (%)")
-
-ggplot(data = Rao_long_perc, aes(x = ntraits, y = var_explained, fill = var_source)) + 
-  geom_bar(position = "stack", stat = "identity") + 
-  xlab("Number of traits") + ylab("Variance explained (%)")
 

@@ -316,16 +316,16 @@ min_obs_sim[min_obs_sim<5]
 which(min_obs_sim %in% min_obs_sim[min_obs_sim<5])
 
 # Compute FD metrics
-dendroFD <- TOP_comms <- TED_comms <- MVNH_det_comms <- TPD_FRic <- TPD_FEve <- TPD_FDiv <- hv_richness <- hv_regularity <- hv_divergence <- matrix(NA, nrow = ncomms, ncol = ncol(trait1a_matrix))
+dendroFD <- TOP_comms <- TED_comms <- MVNH_det_comms <- TPD_FRic <- TPD_FEve <- TPD_FDiv <- hv_richness <- hv_regularity <- hv_divergence <- matrix(NA, nrow = ncomms, ncol = ncol(trait1_matrix))
 Ck <- NULL
 comm_names <- unique(comm)
 
-for(j in 1:ncol(trait1a_matrix)){ 
+for(j in 1:ncol(trait1_matrix)){ 
   for(i in 1:ncomms){
-   traits <- na.omit(data.frame(trait1 = trait1a_matrix[, j], trait2 = trait2a_matrix[, j], comm, sp))
+   traits <- na.omit(data.frame(trait1 = trait1_matrix[, j], trait2 = trait2_matrix[, j], comm, sp))
    subcom <- subset(traits, comm == comm_names[i])
    subtrait_matrix <- as.data.frame(scale(subcom[, c("trait1", "trait2")]))
-    TOP_comms[i, j] <- TOP.index(subcom[, c("trait1", "trait2")])[2]
+    #TOP_comms[i, j] <- TOP.index(subcom[, c("trait1", "trait2")])[2]
     TED_comms[i, j] <- TED.index(subcom[, c("trait1", "trait2")])
     MVNH_det_comms[i, j] <- det(cov(subcom[, c("trait1", "trait2")]))
   }
@@ -343,24 +343,24 @@ for(j in 1:ncol(trait1a_matrix)){
    dendroFD[, j] <- FD_dendro(S = traits[, c("trait1", "trait2")], A = Cind, w = NA, Distance.method = "gower", ord = "podani", Cluster.method = "average", stand.x = TRUE, Weigthedby = "abundance")$FDpg
 
   # TPDs and TPDc
-   TPDs_spp <- TPDs(species = traits$sp, traits = traits[, c("trait1", "trait2")], samples = traits$comm) 
-   TPDc_comm <- TPDc(TPDs = TPDs_spp, sampUnit = C)
+   #TPDs_spp <- TPDs(species = traits$sp, traits = traits[, c("trait1", "trait2")], samples = traits$comm) 
+   #TPDc_comm <- TPDc(TPDs = TPDs_spp, sampUnit = C)
    #plotTPD(TPDs_spp, nRowCol = c(5,2))
    #plotTPD(TPDc_comm, nRowCol = c(5,2))
 
   # TPD_FD
-   TPD_FD <- REND(TPDc = TPDc_comm)
-   TPD_FRic[, j] <- TPD_FD$communities$FRichness
-   TPD_FEve[, j] <- TPD_FD$communities$FEvenness
-   TPD_FDiv[, j] <- TPD_FD$communities$FDivergence
+   #TPD_FD <- REND(TPDc = TPDc_comm)
+   #TPD_FRic[, j] <- TPD_FD$communities$FRichness
+   #TPD_FEve[, j] <- TPD_FD$communities$FEvenness
+   #TPD_FDiv[, j] <- TPD_FD$communities$FDivergence
  
   # Hypervolumes
-   hvlist <- kernel.build(comm = Cind, trait = traits[, c("trait1", "trait2")], axes = 0, distance = "euclidean", method = "gaussian", abund = FALSE, samples.per.point = 5)
+   #hvlist <- kernel.build(comm = Cind, trait = traits[, c("trait1", "trait2")], axes = 0, distance = "euclidean", method = "gaussian", abund = FALSE, samples.per.point = 5)
 
   # Compute functional diversity metrics
-   hv_richness[, j] <- kernel.alpha(hvlist)
-   hv_regularity[, j] <- kernel.evenness(hvlist)
-   hv_divergence[, j] <- kernel.dispersion(hvlist, func = "divergence")
+   #hv_richness[, j] <- kernel.alpha(hvlist)
+   #hv_regularity[, j] <- kernel.evenness(hvlist)
+   #hv_divergence[, j] <- kernel.dispersion(hvlist, func = "divergence")
  }
 
 # Simulation parameters retained
@@ -387,11 +387,19 @@ FD_itv <- data.frame(dendroFD = as.vector(dendroFD), TOP = as.vector(TOP_comms),
   CVcomm = rep(CVcomm_sim, each = nsim), 
   CVintrasp = rep(CVintrasp_sim, each = nsim))
 
-#write.csv(FD_itv, "FD_itv_sims.csv")
+write.csv(FD_itv, "FD_itv_sims2.csv")
 #FD_itv <- read.table("FD_itv_sims.txt", header = TRUE)
 
 # Metrics correlations (15x8)
-p <- ggpairs(FD_itv[, 1:10], upper = list(continuous = wrap("cor", method = "spearman"))) +
+my_fn <- function(data, mapping, method = "loess", ...){
+  p <- ggplot(data = data, mapping = mapping) + 
+    geom_point() + 
+    geom_smooth(method=method, ...)
+  p
+}
+
+p <- ggpairs(FD_itv[, 1:10], upper = list(continuous = wrap("cor", method = "spearman")),
+                             lower = list(continuous = my_fn)) +
 ggplot2::theme(axis.text.x = element_text(size = 5), axis.text.y = element_text(size = 5))
 p
 
@@ -418,3 +426,21 @@ response[i] <- colnames(FD_itv)[every_comb[i, 2]]
 coeff_df <- data.frame(predictor, response, z.coeff, ci)
 
 #write.csv(coeff_df, "FD_itv_sims_mixed_models.csv")
+
+# Effects of variance sources on FD metrics
+plot(FD_itv$CVcomm, FD_itv$CVintrasp, cex = (1/100)*FD_itv$TOP)
+
+mean_sims <- FD_itv %>% group_by(range_trait1, CVcomm, CVintrasp) %>% 
+  summarise(meanTOP = mean(TOP), meanMVNH = mean(MVNHdet), 
+            mean_TPD_FRich = mean(TPD_FRich))
+
+plot(mean_sims$CVcomm, mean_sims$CVintrasp, cex = (1/50)*mean_sims$meanTOP)
+
+ggplot(data = mean_sims, aes(x = CVcomm, y = CVintrasp)) +
+  geom_point(aes(color = meanMVNH), size = log(mean_sims$meanMVNH))
+
+ggplot(data = mean_sims, aes(x = CVcomm, y = CVintrasp)) +
+  geom_point(aes(color = mean_TPD_FRich), size = mean_sims$mean_TPD_FRich/500) +
+  scale_colour_gradient(low = "blue", high = "red") +
+  ylim(0, 0.22) + xlab("Between-species variability") + 
+  ylab("Intraspecific variability")

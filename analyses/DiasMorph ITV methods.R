@@ -15,7 +15,7 @@ sp_20obs <- names(nxsp[nxsp>20])
 sp_20obs <- fruits[fruits$scientificName %in% sp_20obs, ]
 sp <- unique(sp_20obs$scientificName)
 
-# Select 30 species randomly
+# Select 30 species randomly (for Euclidean and Gower distances, reduce this number to 5)
 rn_sp <- sample(sp, size = 30, replace = FALSE)
 random_sp <- sp_20obs[sp_20obs$scientificName %in% rn_sp, ]
 table(random_sp$scientificName) 
@@ -144,7 +144,9 @@ ntraits <- as.factor(sort(rep(1:8, times = length(to.upper.mat[[1]]))))
 dist_df <- data.frame(distance = dist_vector, ntraits)
 
 ggplot(data = dist_df, aes(x = ntraits, y = distance, group = ntraits)) + 
-  geom_boxplot() + xlab("Number of traits") + ylab("Euclidean distance")
+  geom_jitter(position = position_jitter(0.2), alpha = 0.1) +
+  geom_boxplot(alpha = 0.1, col = "darkorchid3", outlier.shape = NA) + xlab("Number of traits") + ylab("Euclidean distance") +
+  theme_bw()
 
 # Gower distance (8x5 in)
 gow_dist_list <- list()
@@ -162,4 +164,6 @@ ntraits <- as.factor(sort(rep(1:8, times = length(to.upper.mat[[1]]))))
 dist_df <- data.frame(distance = dist_vector, ntraits)
 
 ggplot(data = dist_df, aes(x = ntraits, y = distance, group = ntraits)) + 
-  geom_boxplot() + xlab("Number of traits") + ylab("Gower dissimilarity")
+  geom_jitter(position = position_jitter(0.2), alpha = 0.1) +
+  geom_boxplot(alpha = 0.1, col = "darkorchid3", outlier.shape = NA) + xlab("Number of traits") + ylab("Gower dissimilarity") +
+  theme_bw()
