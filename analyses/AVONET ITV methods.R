@@ -2,7 +2,6 @@ library(ggplot2)
 library(dynRB)
 library(FD)
 library(cati)
-library(hypervolume)
 library(tidyr)
 set.seed(662)
 
@@ -130,37 +129,6 @@ ggplot(data = NO_df, aes(x = ntraits, y = NO, group = ntraits)) +
   geom_jitter(position = position_jitter(0.2), alpha = 0.1) +
   geom_boxplot(alpha = 0.1, col = "darkorchid3") + xlab("Number of traits") + ylab("Niche overlap") +
   theme_bw()
-
-#### Hypervolumes #########
-hv_list <- list()
-for(i in 4:12){
-  hv_list[[i]] <- list()
-  for(j in 1:length(genus_sp)){
-  sp <- subset(genus, Species == genus_sp[j])
-  hv_list[[i]][j] <- hypervolume_gaussian(data = sp[, 4:i])
-  }
-}
-# Remove first empty objects
-hv_list <- Filter(length, hv_list)
-
-nsp <- length(genus_sp)
-sp_comb <- t(combn(nsp, 2))
-n_comparisons <- nrow(sp_comb)
-hv_overlap <- array(NA, c(n_comparisons, 4, 9))
-
-for(k in 6:9){ # traits
-  hv_join <- hypervolume_join(hv_list[[k]])
-  for(i in 1:n_comparisons){ # number of species pairs
-  sp1 <- sp_comb[i,1]
-  sp2 <- sp_comb[i,2]
-  hv_set <- hypervolume_set(hv_join[[sp1]], hv_join[[sp2]], check.memory = F)
-  hv_overlap[i,,k] <- hypervolume_overlap_statistics(hv_set)
-  }
-}
-
-hv_overlap_df <- apply(hv_overlap, 2, c)
-hv_overlap_df$ntraits <- sort(rep(1:9, n_comparisons))
-write.csv(hv_overlap_df, "overlap.csv") # hasta el trait 5 incluido
 
 ############ Distance metrics between individual observations
 # Euclidean distance
