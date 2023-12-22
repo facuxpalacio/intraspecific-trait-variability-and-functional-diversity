@@ -24,6 +24,7 @@ library(dplyr) # Data handling
 library(tidyr) # Data handling
 library(knitr) # Improved layout
 library(mobsim) # Community matrices simulation
+library(Ostats) # Trait overlap
 library(lme4) # Linear mixed models
 library(boot) # Bootstrap confidence intervals
 library(cati) # T-statistics, Rao's entropy decomposition
@@ -111,7 +112,7 @@ ggplot(T5, aes(x = V1, y = V2, color = as.factor(species))) +
 
 \
 
-# One species, a single trait: the coefficient of variation and the phenotypic dissimilarity index
+# One species, a single trait: the coefficient of variation
 `uni_cv` computes the coefficient of variation and the Bao's coefficient of variation for a single (continuous) trait and a set of species.
 ```{r cv}
 uni_cv <- function(trait, species){
@@ -119,7 +120,7 @@ uni_cv <- function(trait, species){
   sp <- table(species)
   Nsp <- length(sp)
   df <- data.frame(species, trait)
-  summary_cv <- as.data.frame(matrix(NA, nrow = Nsp, ncol = 7))
+  summary_cv <- as.data.frame(matrix(NA, nrow = Nsp, ncol = 8))
   sp.names <- unique(df$species)
   
   for(i in 1:Nsp){
@@ -132,13 +133,14 @@ uni_cv <- function(trait, species){
     kurt <- sum(((subdata$trait - meanT)/S)^4)/N
     BaoCV <- cv - cv^3/N + cv/(4*N) + cv^2*skew/(2*N) + 
                  cv*kurt/(8*N)
-    summary_cv[i, ] <- c(N, meanT, S, cv, skew, kurt, BaoCV)
+    KCV <- sqrt(cv^2/(1 + cv^2))
+    summary_cv[i, ] <- c(N, meanT, S, cv, skew, kurt, BaoCV, KCV)
   }
   
   summary_cv <- data.frame(sp.names, summary_cv)
   colnames(summary_cv) <- c("Species", "Sample size", "Mean",
                             "Standard deviation", "CV", "Skewness", 
-                            "Kurtosis", "Bao's CV")
+                            "Kurtosis", "Bao's CV", "Kvålseth's CV")
     summary_cv
 }
  
@@ -146,7 +148,41 @@ trait <- trait_matrix[[5]]$V1
 species <- as.factor(trait_matrix[[5]]$sp)
 kable(uni_cv(trait = trait, species = species), digits = 2)
 ```
-Looking at trait distributions, it seems that species do not strongly vary between them, but there is high variability within the same species.
+Looking at trait distributions, it seems that species do not greatly vary between them, but there is high variability within the same species.
+
+\
+
+# Two species, a single trait
+```{r overlap}
+
+```
+
+\
+
+# One species, multiple traits: the multivariate coefficient of variation and the phenotypic dissimilarity index
+`multi_cv` computes the multiple coefficient of variation for a set of traits and species.
+```{r mcv}
+multi_cv <- function(traits, species){
+  species <- as.factor(species)
+  p <- ncol(traits)
+  mu <- colMeans(traits, na.rm = TRUE)
+  sigma <- as.matrix(var(traits, na.rm = TRUE))
+  trace <- sum(diag(sigma))
+  R <- sqrt((det(sigma)^(1/p))/(t(mu) %*% mu)) # Reyment's CV
+  VV <- sqrt(trace/(t(mu) %*% mu)) # Van Valen's CV
+  VN <- sqrt(1/(t(mu) %*% solve(sigma) %*% mu)) # Voinoi and Nikulin's CV
+  AZ <- sqrt((t(mu) %*% sigma %*% mu)/((t(mu) %*% mu)^2)) # Albert and Zhang's CV
+  cvs <- data.frame(R, VV, VN, AZ)
+  colnames(cvs) <- c("Reyment", "Van Valen", "Voinoi and Nikulin", "Albert and Zhang")
+  cvs
+}
+species <- as.factor(trait_matrix[[5]]$sp)
+traits <- trait_matrix[[5]][,-1]
+
+kable(multi_cv(species = species, traits = traits), digits = 2)
+```
+
+Note how variability considering multiple correlated traits strongly reduced compared to single trait variability.
 
 `PhD` computes the phenotypic dissimilarity (PhD) index, which allows quantifying intraspecific trait variability between populations or groups of individuals growing in different environmental conditions while considering the effect of phenotypic variability within populations. To give an example, we will consider that there are two extremes of an environmental gradient (A and B) and will assign individuals of each species to each of these two treatments. Within each species, the lowest values belong to treatment A, and the highest, to treatment B.
 
@@ -205,34 +241,8 @@ for(i in 1:length(species_names)){
 df_PhD_index <- data.frame(species = species_names, PhD_index, CV_A, CV_B)
 kable(df_PhD_index, digits = 2)
 ```
+
 As it can be seen, the coefficient of variation only allows calculation of ITV within each population, being not able to account for within-population variability.
-
-\
-
-# One species, multiple traits: the multivariate coefficient of variation
-`multi_cv` computes the multiple coefficient of variation for a set of traits and species.
-```{r mcv}
-multi_cv <- function(traits, species){
-  species <- as.factor(species)
-  p <- ncol(traits)
-  mu <- colMeans(traits, na.rm = TRUE)
-  sigma <- as.matrix(var(traits, na.rm = TRUE))
-  trace <- sum(diag(sigma))
-  R <- sqrt((det(sigma)^(1/p))/(t(mu) %*% mu)) # Reyment's CV
-  VV <- sqrt(trace/(t(mu) %*% mu)) # Van Valen's CV
-  VN <- sqrt(1/(t(mu) %*% solve(sigma) %*% mu)) # Voinoi and Nikulin's CV
-  AZ <- sqrt((t(mu) %*% sigma %*% mu)/((t(mu) %*% mu)^2)) # Albert and Zhang's CV
-  cvs <- data.frame(R, VV, VN, AZ)
-  colnames(cvs) <- c("Reyment", "Van Valen", "Voinoi and Nikulin", "Albert and Zhang")
-  cvs
-}
-species <- as.factor(trait_matrix[[5]]$sp)
-traits <- trait_matrix[[5]][,-1]
-
-kable(multi_cv(species = species, traits = traits), digits = 2)
-```
-
-Note how variability considering multiple correlated traits strongly reduced compared to single trait variability.
 
 \
 
