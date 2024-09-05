@@ -439,8 +439,9 @@ pca_scores$color <- colors
 pca_plot <- ggplot(pca_scores, aes(x = PC1, y = PC2, color = I(color))) +
   geom_point(size = 3) +
   theme_minimal() +
-  labs(title = "PCA with RGB Combination",
-       x = "PC1", y = "PC2")
+  labs(title = "",
+       x = paste("Principal Component 1 (", round(pca_var_percent[1], 1), "%)", sep = ""),
+       y = paste("Principal Component 2 (", round(pca_var_percent[2], 1), "%)", sep = ""))
 
 # Create dummy plots for continuous variables to serve as legends
 legend1 <- ggplot(data.frame(var1_norm, dummy=1), aes(x=dummy, y=var1_norm, fill=var1_norm)) +
@@ -471,5 +472,4 @@ combined_plot <- plot_grid(
   nrow = 1, rel_widths = c(4, 1)
 )
 
-# Display the combined plot
 print(combined_plot)
