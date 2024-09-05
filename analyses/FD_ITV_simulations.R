@@ -408,6 +408,9 @@ axis_labels <- paste0("PC", 1:2, " (", round(pca_var_percent[1:2], 1), "%)")
 size_arrows <- 3
 arrows_data <- as.data.frame(size_arrows*pca_loadings[, 1:2])
 arrows_data$variable <- rownames(pca_loadings)
+arrows_data$variable <- c("Dendrogram FD", "TOP", "TED", "MVNH",
+                          "TPD FRich", "TPD FEve", "TPD FDiv",
+                          "HV FRich", "HV FReg", "HV FDiv")
 
 # General plot
 ggplot(pca_scores, aes(x = PC1, y = PC2)) +
