@@ -385,21 +385,8 @@ FD_itv <- data.frame(dendroFD = as.vector(dendroFD), TOP = as.vector(TOP_comms),
 write.csv(FD_itv, "FD_itv_sims.csv")
 #FD_itv <- read.table("FD_itv_sims.txt", header = TRUE)
 
-# Average metrics per simulation scenario
-FD_itv$scenario <- paste(FD_itv$range_trait1, FD_itv$CVcomm,
-                         FD_itv$CVintrasp, sep = "_")
-xFD_itv <- FD_itv %>% group_by(scenario) %>%  
-  summarise(across(c("dendroFD", "TOP", "TED", "MVNHdet",
-                     "TPD_FRich", "TPD_FEve", "TPD_FDiv", "HV_Rich",
-                     "HV_Reg", "HV_Dev"), ~ mean(.x, na.rm = TRUE)))
-xFD_itv <- cbind(xFD_itv, str_split_fixed(xFD_itv$scenario, "_", 3))
-colnames(xFD_itv)[12:14] <- c("range_trait1", "CVcomm", "CVintrasp")
-xFD_itv$range_trait1 <- as.numeric(xFD_itv$range_trait1)
-xFD_itv$CVcomm <- as.numeric(xFD_itv$CVcomm)
-xFD_itv$CVintrasp <- as.numeric(xFD_itv$CVintrasp)
-
 # Principal component analysis
-pca <- prcomp(xFD_itv[, 2:11], scale = TRUE)
+pca <- prcomp(FD_itv[, 1:10], scale = TRUE)
 pca_scores <- as.data.frame(pca$x)
 pca_loadings <- as.data.frame(pca$rotation)
 pca_var <- pca$sdev^2
@@ -412,9 +399,8 @@ arrows_data$variable <- c("Dendrogram FD", "TOP", "TED", "MVNH",
                           "TPD FRich", "TPD FEve", "TPD FDiv",
                           "HV FRich", "HV FReg", "HV FDiv")
 
-# General plot
+# PCA on individual communities
 ggplot(pca_scores, aes(x = PC1, y = PC2)) +
-  geom_point()+
   geom_hex(alpha=0.5) +
   scale_fill_continuous(type = "viridis") +
   geom_segment(data = arrows_data, 
@@ -429,7 +415,34 @@ ggplot(pca_scores, aes(x = PC1, y = PC2)) +
   theme(legend.position = "none") +
   theme_bw()
 
-# Show sources of variation
+# PCA on average metrics per community with sources of variation
+
+# Average metrics per simulation scenario
+FD_itv$scenario <- paste(FD_itv$range_trait1, FD_itv$CVcomm,
+                         FD_itv$CVintrasp, sep = "_")
+xFD_itv <- FD_itv %>% group_by(scenario) %>%  
+  summarise(across(c("dendroFD", "TOP", "TED", "MVNHdet",
+                     "TPD_FRich", "TPD_FEve", "TPD_FDiv", "HV_Rich",
+                     "HV_Reg", "HV_Dev"), ~ mean(.x, na.rm = TRUE)))
+xFD_itv <- cbind(xFD_itv, str_split_fixed(xFD_itv$scenario, "_", 3))
+colnames(xFD_itv)[12:14] <- c("range_trait1", "CVcomm", "CVintrasp")
+xFD_itv$range_trait1 <- as.numeric(xFD_itv$range_trait1)
+xFD_itv$CVcomm <- as.numeric(xFD_itv$CVcomm)
+xFD_itv$CVintrasp <- as.numeric(xFD_itv$CVintrasp)
+
+pca <- prcomp(xFD_itv[, 2:11], scale = TRUE)
+pca_scores <- as.data.frame(pca$x)
+pca_loadings <- as.data.frame(pca$rotation)
+pca_var <- pca$sdev^2
+pca_var_percent <- 100*pca_var/sum(pca_var)
+axis_labels <- paste0("PC", 1:2, " (", round(pca_var_percent[1:2], 1), "%)")
+size_arrows <- 3
+arrows_data <- as.data.frame(size_arrows*pca_loadings[, 1:2])
+arrows_data$variable <- rownames(pca_loadings)
+arrows_data$variable <- c("Dendrogram FD", "TOP", "TED", "MVNH",
+                          "TPD FRich", "TPD FEve", "TPD FDiv",
+                          "HV FRich", "HV FReg", "HV FDiv")
+
 # Normalize variables to range [0, 1]
 var1_norm <- rescale(xFD_itv$range_trait1)
 var2_norm <- rescale(xFD_itv$CVcomm)
