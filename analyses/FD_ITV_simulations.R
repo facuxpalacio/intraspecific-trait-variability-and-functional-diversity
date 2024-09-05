@@ -8,7 +8,9 @@ library(flexmix) # for TED index (KL divergence)
 library(TPD) # Trait-probability density
 library(alphahull) # Convex hulls
 library(BAT) # Hypervolumes
-library(stringr) # Handle strings
+library(stringr) # String handling
+library(dplyr) # Data handling
+library(scales) # Color scales
 
 #### TOP and TED index functions
 #### Function to compute TOP index (from Fontana et al. 2015)
@@ -380,7 +382,7 @@ FD_itv <- data.frame(dendroFD = as.vector(dendroFD), TOP = as.vector(TOP_comms),
   CVcomm = rep(CVcomm_sim, each = nsim), 
   CVintrasp = rep(CVintrasp_sim, each = nsim))
 
-write.csv(FD_itv, "FD_itv_sims2.csv")
+write.csv(FD_itv, "FD_itv_sims.csv")
 #FD_itv <- read.table("FD_itv_sims.txt", header = TRUE)
 
 # Average metrics per simulation scenario
@@ -407,9 +409,10 @@ size_arrows <- 3
 arrows_data <- as.data.frame(size_arrows*pca_loadings[, 1:2])
 arrows_data$variable <- rownames(pca_loadings)
 
+# General plot
 ggplot(pca_scores, aes(x = PC1, y = PC2)) +
- geom_hex(alpha=0.5) +
-  geom_density2d()+
+  geom_point()+
+  geom_hex(alpha=0.5) +
   scale_fill_continuous(type = "viridis") +
   geom_segment(data = arrows_data, 
                aes(x = 0, y = 0, xend = PC1, yend = PC2), 
@@ -423,22 +426,50 @@ ggplot(pca_scores, aes(x = PC1, y = PC2)) +
   theme(legend.position = "none") +
   theme_bw()
 
+# Show sources of variation
+# Normalize variables to range [0, 1]
+var1_norm <- rescale(xFD_itv$range_trait1)
+var2_norm <- rescale(xFD_itv$CVcomm)
+var3_norm <- rescale(xFD_itv$CVintrasp)
 
+# Combine into RGB colors
+colors <- rgb(var1_norm, var2_norm, var3_norm, maxColorValue = 1)
+pca_scores$color <- colors
 
-# Effects of variance sources on FD metrics
-plot(FD_itv$CVcomm, FD_itv$CVintrasp, cex = (1/100)*FD_itv$TOP)
+pca_plot <- ggplot(pca_scores, aes(x = PC1, y = PC2, color = I(color))) +
+  geom_point(size = 3) +
+  theme_minimal() +
+  labs(title = "PCA with RGB Combination",
+       x = "PC1", y = "PC2")
 
-mean_sims <- FD_itv %>% group_by(range_trait1, CVcomm, CVintrasp) %>% 
-  summarise(meanTOP = mean(TOP), meanMVNH = mean(MVNHdet), 
-            mean_TPD_FRich = mean(TPD_FRich))
+# Create dummy plots for continuous variables to serve as legends
+legend1 <- ggplot(data.frame(var1_norm, dummy=1), aes(x=dummy, y=var1_norm, fill=var1_norm)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "red", name = "Between-assemblage variance") +
+  theme_void() +
+  theme(legend.position = "right")
 
-plot(mean_sims$CVcomm, mean_sims$CVintrasp, cex = (1/50)*mean_sims$meanTOP)
+legend2 <- ggplot(data.frame(var2_norm, dummy=1), aes(x=dummy, y=var2_norm, fill=var2_norm)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "green", name = "Between-species variance") +
+  theme_void() +
+  theme(legend.position = "right")
 
-ggplot(data = mean_sims, aes(x = CVcomm, y = CVintrasp)) +
-  geom_point(aes(color = meanMVNH), size = log(mean_sims$meanMVNH))
+legend3 <- ggplot(data.frame(var3_norm, dummy=1), aes(x=dummy, y=var3_norm, fill=var3_norm)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "blue", name = "Within-species variance") +
+  theme_void() +
+  theme(legend.position = "right")
 
-ggplot(data = mean_sims, aes(x = CVcomm, y = CVintrasp)) +
-  geom_point(aes(color = mean_TPD_FRich), size = mean_sims$mean_TPD_FRich/500) +
-  scale_colour_gradient(low = "blue", high = "red") +
-  ylim(0, 0.22) + xlab("Between-species variability") + 
-  ylab("Intraspecific variability")
+# Combine the PCA plot with legends using cowplot
+combined_plot <- plot_grid(
+  pca_plot, 
+  plot_grid(legend1 + theme(legend.position = "right"),
+            legend2 + theme(legend.position = "right"),
+            legend3 + theme(legend.position = "right"),
+            ncol = 1, rel_widths = c(1)),
+  nrow = 1, rel_widths = c(4, 1)
+)
+
+# Display the combined plot
+print(combined_plot)
