@@ -386,8 +386,8 @@ write.csv(FD_itv, "FD_itv_sims.csv")
 #FD_itv <- read.table("FD_itv_sims.txt", header = TRUE)
 
 # Average metrics per simulation scenario
-FD_itv$scenario <- paste(FD_itv$range_trait1,FD_itv$CVcomm,
-                         FD_itv$CVintrasp, sep="_")
+FD_itv$scenario <- paste(FD_itv$range_trait1, FD_itv$CVcomm,
+                         FD_itv$CVintrasp, sep = "_")
 xFD_itv <- FD_itv %>% group_by(scenario) %>%  
   summarise(across(c("dendroFD", "TOP", "TED", "MVNHdet",
                      "TPD_FRich", "TPD_FEve", "TPD_FDiv", "HV_Rich",
@@ -438,6 +438,12 @@ pca_scores$color <- colors
 
 pca_plot <- ggplot(pca_scores, aes(x = PC1, y = PC2, color = I(color))) +
   geom_point(size = 3) +
+  geom_segment(data = arrows_data, 
+               aes(x = 0, y = 0, xend = PC1, yend = PC2), 
+               color = "black", size = 1) +
+  geom_text(data = arrows_data, 
+            aes(x = PC1, y = PC2, label = variable), 
+            color = "black", size = 3, vjust = -0.5, hjust = 0.5) +
   theme_minimal() +
   labs(title = "",
        x = paste("Principal Component 1 (", round(pca_var_percent[1], 1), "%)", sep = ""),
