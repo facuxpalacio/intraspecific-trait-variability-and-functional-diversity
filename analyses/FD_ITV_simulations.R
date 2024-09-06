@@ -11,6 +11,7 @@ library(BAT) # Hypervolumes
 library(stringr) # String handling
 library(dplyr) # Data handling
 library(scales) # Color scales
+library(ggrepel) # Labeling overlap
 
 #### TOP and TED index functions
 #### Function to compute TOP index (from Fontana et al. 2015)
@@ -212,8 +213,8 @@ list_trait2_matrix[[i]][[j]] <- rnorm(n = nindxsp*nsp*ncomms, mean = sort(rep(me
                                                        sd = ITV2)
 
 # simulation parameters as names
-names(list_trait1_matrix)[i] <- names(list_trait2_matrix)[i] <- paste("mincomm", round(mean1_comm_sim[i, 1], 1), "maxcomm",  round(mean1_comm_sim[i, ncol(mean1_comm_sim)-1], 1), "CVcomm", round(mean1_comm_sim$cv_comm[i], 1), sep = "_")
-names(list_trait1_matrix[[i]])[j] <- names(list_trait2_matrix[[i]])[j] <- paste("CVintrasp", round(cv_sp[j], 1), sep = "_")
+names(list_trait1_matrix)[i] <- names(list_trait2_matrix)[i] <- paste("mincomm", round(mean1_comm_sim[i, 1], 2), "maxcomm",  round(mean1_comm_sim[i, ncol(mean1_comm_sim)-1], 2), "CVcomm", round(mean1_comm_sim$cv_comm[i], 2), sep = "_")
+names(list_trait1_matrix[[i]])[j] <- names(list_trait2_matrix[[i]])[j] <- paste("CVintrasp", round(cv_sp[j], 2), sep = "_")
 }
 }
 
@@ -405,10 +406,10 @@ ggplot(pca_scores, aes(x = PC1, y = PC2)) +
   scale_fill_continuous(type = "viridis") +
   geom_segment(data = arrows_data, 
                aes(x = 0, y = 0, xend = PC1, yend = PC2), 
-               color = "black", size = 1) +
-  geom_text(data = arrows_data, 
+               color = "black", size = 0.5) +
+  geom_text_repel(data = arrows_data, 
             aes(x = PC1, y = PC2, label = variable), 
-            color = "black", size = 3, vjust = -0.5, hjust = 0.5) +
+            color = "black", size = 3, vjust = -1, hjust = 0.5) +
   labs(title = "",
        x = paste("Principal Component 1 (", round(pca_var_percent[1], 1), "%)", sep = ""),
        y = paste("Principal Component 2 (", round(pca_var_percent[2], 1), "%)", sep = "")) +
@@ -444,44 +445,49 @@ arrows_data$variable <- c("Dendrogram FD", "TOP", "TED", "MVNH",
                           "HV FRich", "HV FReg", "HV FDiv")
 
 # Normalize variables to range [0, 1]
-var1_norm <- rescale(xFD_itv$range_trait1)
-var2_norm <- rescale(xFD_itv$CVcomm)
-var3_norm <- rescale(xFD_itv$CVintrasp)
+var1_norm <- rescale(xFD_itv$CVcomm)
+var2_norm <- rescale(xFD_itv$CVintrasp)
 
-# Combine into RGB colors
-colors <- rgb(var1_norm, var2_norm, var3_norm, maxColorValue = 1)
+# Normalize var3 to range [min size, max size] for size scaling
+var3_size <- rescale(xFD_itv$range_trait1, to = c(1, 5))  # Adjust the range of sizes
+
+# Combine into colors: blue-to-red for var1, grayscale for var2
+colors <- rgb(var1_norm, 0, 1 - var1_norm, var2_norm)
 pca_scores$color <- colors
+pca_scores$size <- var3_size
 
-pca_plot <- ggplot(pca_scores, aes(x = PC1, y = PC2, color = I(color))) +
-  geom_point(size = 3) +
+pca_plot <- ggplot(pca_scores, aes(x = PC1, y = PC2, color = I(color),
+                                   size = size)) +
+  geom_point(size = pca_scores$size) +
   geom_segment(data = arrows_data, 
                aes(x = 0, y = 0, xend = PC1, yend = PC2), 
-               color = "black", size = 1) +
+               color = "black", size = 0.5) +
   geom_text(data = arrows_data, 
             aes(x = PC1, y = PC2, label = variable), 
             color = "black", size = 3, vjust = -0.5, hjust = 0.5) +
   theme_minimal() +
   labs(title = "",
        x = paste("Principal Component 1 (", round(pca_var_percent[1], 1), "%)", sep = ""),
-       y = paste("Principal Component 2 (", round(pca_var_percent[2], 1), "%)", sep = ""))
+       y = paste("Principal Component 2 (", round(pca_var_percent[2], 1), "%)", sep = "")) +
+theme(panel.border = element_rect(fill = "NA"))
 
 # Create dummy plots for continuous variables to serve as legends
 legend1 <- ggplot(data.frame(var1_norm, dummy=1), aes(x=dummy, y=var1_norm, fill=var1_norm)) +
   geom_tile() +
-  scale_fill_gradient(low = "white", high = "red", name = "Between-assemblage variance") +
+  scale_fill_gradient(low = "blue", high = "red", name = "Between-species variance") +
   theme_void() +
   theme(legend.position = "right")
 
 legend2 <- ggplot(data.frame(var2_norm, dummy=1), aes(x=dummy, y=var2_norm, fill=var2_norm)) +
   geom_tile() +
-  scale_fill_gradient(low = "white", high = "green", name = "Between-species variance") +
+  scale_fill_gradient(low = "white", high = "black", name = "Within-species variance") +
   theme_void() +
   theme(legend.position = "right")
 
-legend3 <- ggplot(data.frame(var3_norm, dummy=1), aes(x=dummy, y=var3_norm, fill=var3_norm)) +
-  geom_tile() +
-  scale_fill_gradient(low = "white", high = "blue", name = "Within-species variance") +
-  theme_void() +
+legend3 <- ggplot(data.frame(var3_size, dummy=1), aes(x=dummy, y=var3_size, size=var3_size)) +
+  geom_point() +
+  scale_size_continuous(range = c(1, 5), name = "Between-assemblage variance (trait 1)") +
+  theme_void() +  # Remove axis labels and grid
   theme(legend.position = "right")
 
 # Combine the PCA plot with legends using cowplot
