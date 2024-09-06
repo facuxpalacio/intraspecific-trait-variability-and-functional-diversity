@@ -389,14 +389,16 @@ write.csv(FD_itv, "FD_itv_sims.csv")
 # Principal component analysis
 pca <- prcomp(FD_itv[, 1:10], scale = TRUE)
 pca_scores <- as.data.frame(pca$x)
+pca_scores$PC1 <- (-1)*pca_scores$PC1 # invert first axis
 pca_loadings <- as.data.frame(pca$rotation)
+pca_loadings$PC1 <- (-1)*pca_loadings$PC1 # invert first axis
 pca_var <- pca$sdev^2
 pca_var_percent <- 100*pca_var/sum(pca_var)
 axis_labels <- paste0("PC", 1:2, " (", round(pca_var_percent[1:2], 1), "%)")
 size_arrows <- 3
 arrows_data <- as.data.frame(size_arrows*pca_loadings[, 1:2])
 arrows_data$variable <- rownames(pca_loadings)
-arrows_data$variable <- c("Dendrogram FD", "TOP", "TED", "MVNH",
+arrows_data$variable <- c("FD", "TOP", "TED", "MVNH",
                           "TPD FRich", "TPD FEve", "TPD FDiv",
                           "HV FRich", "HV FReg", "HV FDiv")
 
@@ -440,7 +442,7 @@ axis_labels <- paste0("PC", 1:2, " (", round(pca_var_percent[1:2], 1), "%)")
 size_arrows <- 3
 arrows_data <- as.data.frame(size_arrows*pca_loadings[, 1:2])
 arrows_data$variable <- rownames(pca_loadings)
-arrows_data$variable <- c("Dendrogram FD", "TOP", "TED", "MVNH",
+arrows_data$variable <- c("FD", "TOP", "TED", "MVNH",
                           "TPD FRich", "TPD FEve", "TPD FDiv",
                           "HV FRich", "HV FReg", "HV FDiv")
 
@@ -462,9 +464,9 @@ pca_plot <- ggplot(pca_scores, aes(x = PC1, y = PC2, color = I(color),
   geom_segment(data = arrows_data, 
                aes(x = 0, y = 0, xend = PC1, yend = PC2), 
                color = "black", size = 0.5) +
-  geom_text(data = arrows_data, 
+  geom_text_repel(data = arrows_data, 
             aes(x = PC1, y = PC2, label = variable), 
-            color = "black", size = 3, vjust = -0.5, hjust = 0.5) +
+            color = "black", size = 3, vjust = -0.5, hjust = 1) +
   theme_minimal() +
   labs(title = "",
        x = paste("Principal Component 1 (", round(pca_var_percent[1], 1), "%)", sep = ""),
