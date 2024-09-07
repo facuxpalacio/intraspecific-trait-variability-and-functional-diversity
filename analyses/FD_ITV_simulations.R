@@ -12,6 +12,7 @@ library(stringr) # String handling
 library(dplyr) # Data handling
 library(scales) # Color scales
 library(ggrepel) # Labeling overlap
+library(cowplot) # Plot handling
 
 #### TOP and TED index functions
 #### Function to compute TOP index (from Fontana et al. 2015)
@@ -503,3 +504,13 @@ combined_plot <- plot_grid(
 )
 
 print(combined_plot)
+
+# Correlations between components and sources of variation
+pc1 <- pca_scores$PC1
+pc2 <- pca_scores$PC2
+cor(pc1, xFD_itv$range_trait1)
+cor(pc1, xFD_itv$CVcomm)
+cor(pc1, xFD_itv$CVintrasp)
+cor(pc2, xFD_itv$range_trait1)
+cor(pc2, xFD_itv$CVcomm)
+cor(pc2, xFD_itv$CVintrasp)
