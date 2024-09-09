@@ -390,9 +390,9 @@ write.csv(FD_itv, "FD_itv_sims.csv")
 # Principal component analysis
 pca <- prcomp(FD_itv[, 1:10], scale = TRUE)
 pca_scores <- as.data.frame(pca$x)
-pca_scores$PC1 <- (-1)*pca_scores$PC1 # invert first axis
+pca_scores$PC1 <- pca_scores$PC1 # invert first axis
 pca_loadings <- as.data.frame(pca$rotation)
-pca_loadings$PC1 <- (-1)*pca_loadings$PC1 # invert first axis
+pca_loadings$PC1 <- pca_loadings$PC1 # invert first axis
 pca_var <- pca$sdev^2
 pca_var_percent <- 100*pca_var/sum(pca_var)
 axis_labels <- paste0("PC", 1:2, " (", round(pca_var_percent[1:2], 1), "%)")
@@ -508,9 +508,6 @@ print(combined_plot)
 # Correlations between components and sources of variation
 pc1 <- pca_scores$PC1
 pc2 <- pca_scores$PC2
-cor(pc1, xFD_itv$range_trait1)
-cor(pc1, xFD_itv$CVcomm)
-cor(pc1, xFD_itv$CVintrasp)
-cor(pc2, xFD_itv$range_trait1)
-cor(pc2, xFD_itv$CVcomm)
-cor(pc2, xFD_itv$CVintrasp)
+
+mcp1 <- lm(pc1 ~ range_trait1 + CVcomm + CVintrasp, data = FD_itv)
+mcp2 <- lm(pc1 ~ range_trait1 + CVcomm + CVintrasp, data = FD_itv)
