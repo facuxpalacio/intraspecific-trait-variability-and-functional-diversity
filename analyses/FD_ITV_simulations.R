@@ -509,5 +509,8 @@ print(combined_plot)
 pc1 <- pca_scores$PC1
 pc2 <- pca_scores$PC2
 
-mcp1 <- lm(pc1 ~ range_trait1 + CVcomm + CVintrasp, data = FD_itv)
-mcp2 <- lm(pc1 ~ range_trait1 + CVcomm + CVintrasp, data = FD_itv)
+mpc1 <- lm(pc1 ~ range_trait1 + CVcomm + CVintrasp, data = FD_itv)
+mpc2 <- lm(pc2 ~ range_trait1 + CVcomm + CVintrasp, data = FD_itv)
+
+summary(mpc1)
+summary(mpc2)
