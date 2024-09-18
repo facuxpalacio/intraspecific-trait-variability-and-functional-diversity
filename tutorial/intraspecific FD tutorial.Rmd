@@ -285,23 +285,33 @@ As it can be seen, the coefficient of variation only allows calculation of ITV w
 \
 
 ## Community weighted intraspecific trait variance
-`CWmetrics` computes the community-weighted mean (CWM), variance (CWV) and intraspecific variance (CWIV) for a set of communities and traits. The function needs a community data frame (argument `comm`) and a list of individuals x trait data frames (argument `traits`). The first column of each data frame must contain the species label (argument `species`). If intraspecific variability is 0, then CWIV = CWV. This happens when one is working under the mean field approach (the trait matrix is composed of mean trait values). The outuput is a data frame with CWM, CWV and CWIV for each community and trait.
+`CWmetrics` computes the community-weighted mean (CWM), variance (CWV) and intraspecific variance (CWITV) for a set of communities and traits. The function needs a community data frame (argument `comm`) and a list of individuals x trait data frames (argument `traits`). The first column of each data frame must contain the species label (argument `species`). If intraspecific variability is 0, then CWIV = CWV. This happens when one is working under the mean field approach (the trait matrix is composed of mean trait values). The outuput is a data frame with CWM, CWV and CWIV for each community and trait.
 ```{r CWV}
+# The first column in traits must be the species names (labeled as "species")
+# traits can be a list of individual x trait matrices (one for each assemblage)
 CWmetrics <- function(comm, traits, species, S = 0){
 # Trait matrix at the species level (mean field approach)
-df_traits <- do.call("rbind", traits)
-df_traits$species <- as.factor(df_traits$species)
+if (class(traits) == "list")
+  {df_traits <- do.call("rbind", traits)
+  df_traits$species <- as.factor(df_traits$species)
+  } else {
+df_traits <- traits
+}
 meanT <- df_traits %>% group_by(species) %>% 
   summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE))) %>% 
-  as.data.frame()
+  as.data.frame() %>% na.omit()
 sdT <- df_traits %>% group_by(species) %>% 
   summarise(across(where(is.numeric), ~ sd(.x, na.rm = TRUE))) %>% 
-  as.data.frame()
+  as.data.frame() %>% na.omit()
 t <- as.matrix(meanT[, -1]) # trait means
 S <- as.matrix(sdT[, -1]) # trait standard deviations
 
+# Remove species in the community matrix if NA's present
+comm <- comm[,match(meanT$species, colnames(comm))]
+
 # Community-weighted metrics
 R <- as.matrix(comm/rowSums(comm))  # Species relative abundances
+
 # Community-weighted mean
 CWM <- R %*% t
 colnames(CWM) <- paste0("CWM", 1:ncol(t))
@@ -309,10 +319,10 @@ colnames(CWM) <- paste0("CWM", 1:ncol(t))
 CWV <- (R %*% t^2) - CWM^2
 colnames(CWV) <- paste0("CWV", 1:ncol(t))
 # Community-weighted intraspecific variance
-CWIV <- (R %*% (t^2 + S^2)) - CWM^2
-colnames(CWIV) <- paste0("CWIV", 1:ncol(t))
+CWITV <- (R %*% (t^2 + S^2)) - CWM^2
+colnames(CWITV) <- paste0("CWITV", 1:ncol(t))
 
-CW <- data.frame(CWM, CWV, CWIV)
+CW <- data.frame(CWM, CWV, CWITV)
 CW
 }
 
@@ -698,7 +708,7 @@ traits$comm <- sort(rep(1:ncomms, nindxsp*nsp))
 traits$sp_ind <- 1:nrow(traits)
 Cind <- as.data.frame.matrix(table(traits$comm, traits$sp_ind))
 
-# Build hypervolumes for each community. Due to the large amount of computation time required, I use only 10 random points per individual to simulate kernels, but should be increased to a minimum of 100 in practice for a good description of the underlying trait distribution.
+# Build hypervolumes for each community. Due to the large amount of computation time required, only 10 random points per individual were used to simulate kernels, but should be increased to a minimum of 100 in practice for a good description of the underlying trait distribution.
 hvlist <- kernel.build(comm = Cind, trait = traits, axes = 2, distance = "gower", method = "gaussian", abund = FALSE, samples.per.point = 10)
 
 # Compute functional diversity metrics
@@ -779,7 +789,7 @@ MVNH_det <- function(data=NULL,cov=NULL,var.names=NULL,cov.matrix=F,log=F){
   }
 }
 
-# Compute MVNH for every community
+# Compute MVNH for each community
 MVNH_comms <- data.frame(matrix(NA, nrow = ncomms, ncol = ntraits + 2))
 for(i in 1:ncomms){
   ztrait_matrix <- as.data.frame(scale(trait_matrix[[i]][, -1]))
