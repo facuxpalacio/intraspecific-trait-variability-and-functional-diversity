@@ -1,4 +1,4 @@
-# Intraspecific trait variability and functional diversity
+# Code for: "Integrating intraspecific trait variability in functional diversity: an overview of methods and a guide for ecologists"
 This repository contains data and code to reproduce analyses reported in the manuscript *Palacio FX, G Ottaviani, S Mammola, C Graco-Roza, F de Bello and CP Carmona (2025) Integrating intraspecific trait variability in functional diversity: an overview of methods and a guide for ecologists. Ecological Monographs XX: XX-XX.*
 
 # Overview
